@@ -3,6 +3,11 @@ import datetime
 import pickle
 from collections import UserDict
 from typing import Optional
+from rich.console import Console
+from rich.table import Table
+from rich.markdown import Markdown
+from rich.columns import Columns
+from rich.panel import Panel
 
 
 # -------------------- Field Classes --------------------
@@ -190,7 +195,7 @@ def phone_handler(args, book: AddressBook) -> str:
 def show_all_handler(args, book: AddressBook) -> str:
     if not book.data:
         return "Address book is empty."
-    return "\n".join(str(rec) for rec in book.data.values())
+    return book.data.values()
 
 @input_error
 def add_birthday(args, book: AddressBook) -> str:
@@ -212,9 +217,54 @@ def birthdays(args, book: AddressBook) -> str:
     upcoming = book.get_upcoming_birthdays()
     if not upcoming:
         return "No birthdays in the next week."
-    return "\n".join(f"{name}: {dt.strftime('%d.%m.%Y')}"
-                     for name, dt in upcoming.items())
+    return "\n".join(f"{name}: {dt.strftime('%d.%m.%Y')}" for name, dt in upcoming.items())
+    # return upcoming
 
+
+# ------------------Output Contacts--------------------
+
+def show_contacts_markdown(contacts):
+    console = Console()
+    if not contacts:
+        console.print("[bold yellow]Список контактів порожній.[/bold yellow]")
+        return
+
+    contacts_sorted = sorted(
+        contacts,
+        key=lambda c: c.name.value.lower() if hasattr(c.name, "value") else str(c.name).lower()
+    )
+
+    contact_panels = []
+
+    for contact in contacts_sorted:
+        name = contact.name.value if hasattr(contact.name, "value") else str(contact.name)
+        phones = getattr(contact, "phones", [])
+        emails = getattr(contact, "emails", [])
+        address = getattr(contact, "address", None)
+        notes = getattr(contact, "notes", None)
+        birthday = getattr(contact, "birthday", None)
+        favorite = getattr(contact, "favorite", False)
+
+        phones_str = ", ".join(p.value if hasattr(p, "value") else str(p) for p in phones) or "—"
+        emails_str = ", ".join(str(e) for e in emails) or "—"
+        birthday_str = birthday.value.strftime("%d.%m.%Y") if birthday else "—"
+        address_str = address or "—"
+        notes_str = notes or "—"
+        fav_str = "⭐ Так" if favorite else "—"
+
+        contact_text = (
+            f"[b]📞 Телефони:[/b] {phones_str}\n"
+            f"[b]📧 Email:[/b] {emails_str}\n"
+            f"[b]🎂 День народження:[/b] {birthday_str}\n"
+            f"[b]📍 Адреса:[/b] {address_str}\n"
+            f"[b]📝 Нотатки:[/b] {notes_str}\n"
+            f"[b]⭐ Улюблений:[/b] {fav_str}"
+        )
+
+        panel = Panel(contact_text, title=f"👤 {name.upper()}", border_style="cyan", expand=False)
+        contact_panels.append(panel)
+
+    console.print(Columns(contact_panels, equal=True, expand=True))
 
 # -------------------- CLI Utility --------------------
 
@@ -225,11 +275,14 @@ def parse_input(user_input: str) -> list[str]:
 
 # -------------------- Main Loop --------------------
 
+
+
 def main():
+    console = Console()
     book = load_data()
-    print("Welcome to the assistant bot!")
+    console.print("\nWelcome to the assistant bot!", style="bold red")
     while True:
-        user_input = input("Enter a command: ")
+        user_input = console.input("[bold]Enter a command: [/bold]")
         parts = parse_input(user_input)
         if not parts:
             continue
@@ -242,6 +295,19 @@ def main():
             break
         elif cmd == "hello":
             print("How can I help you?")
+        elif cmd == "help":
+            console.print("\n[bold underline cyan]📋 Команди бота[/bold underline cyan]")
+            commands = [
+                ("[bold green]add[/bold green]", "➕ Add new contact"),
+                ("[bold green]change[/bold green]", "🔄 Change contact"),
+                ("[bold green]delete[/bold green]", "🗑️ Delete contact"),
+                ("[bold green]all[/bold green]", "📇 Show all contacts"),
+                ("[bold green]birthdays[/bold green]", "🎂 Show birthdays within a specified period"),
+                ("[bold green]help[/bold green]", "❓ Show list of commands"),
+                ("[bold green]exit[/bold green] or [bold green]close[/bold green]", "🔚 Show list of commands\n")
+            ]
+            for cmd, desc in commands:
+                console.print(f"{cmd} – {desc}")
         elif cmd == "add":
             print(add_contact(args, book))
         elif cmd == "change":
@@ -249,12 +315,14 @@ def main():
         elif cmd == "phone":
             print(phone_handler(args, book))
         elif cmd == "all":
-            print(show_all_handler(args, book))
+            show_contacts_markdown((show_all_handler(args, book)))
         elif cmd == "add-birthday":
             print(add_birthday(args, book))
         elif cmd == "show-birthday":
+            # show_contacts_markdown(show_birthday(args, book))
             print(show_birthday(args, book))
         elif cmd == "birthdays":
+            # show_contacts_markdown(birthdays(args, book))
             print(birthdays(args, book))
         else:
             print("Invalid command.")
