@@ -27,7 +27,7 @@ class Field:
 
 
 class Name(Field):
-    """Mandatory contact name field."""
+    """Mandatory contact name."""
     def __init__(self, value: str):
         # Ensure the name is not empty
         if not value.strip():
@@ -36,41 +36,36 @@ class Name(Field):
 
 
 class Phone(Field):
-    """Phone number field: must be exactly 10 digits."""
+    """Phone number: exactly 10 digits."""
     def __init__(self, value: str):
-        # Validate that the string is digits only and length is 10
-        if not (value.isdigit() and len(value) == 10):
+        if not value.isdigit() or len(value) != 10:
             raise ValueError("Phone number must contain exactly 10 digits.")
         super().__init__(value)
 
 
 class Birthday(Field):
-    """Birthday field in DD.MM.YYYY format."""
+    """Birthday date in DD.MM.YYYY format."""
     def __init__(self, value: str):
         try:
-            # Parse string into a date object
             dt = datetime.datetime.strptime(value, "%d.%m.%Y").date()
         except ValueError:
-            # Raise error if format is invalid
             raise ValueError("Invalid date format. Use DD.MM.YYYY")
         super().__init__(dt)
 
 # -------------------- Record & AddressBook --------------------
 
 class Record:
-    """Represents a contact record with name, phones, optional birthday, and notes."""
+    """Holds name, phones list, and optional birthda and notes."""
     def __init__(self, name: str):
         self.name = Name(name)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
-        # List of text notes
         self.notes: list[str] = []
 
     def add_phone(self, phone: str) -> None:
         self.phones.append(Phone(phone))
 
     def remove_phone(self, phone: str) -> None:
-        """Remove a phone number, or raise an error if not found."""
         for i, p in enumerate(self.phones):
             if p.value == phone:
                 del self.phones[i]
@@ -95,7 +90,6 @@ class Record:
         today = datetime.date.today()
         next_bday = self.birthday.value.replace(year=today.year)
         if next_bday < today:
-            # If already passed this year, use next year
             next_bday = next_bday.replace(year=today.year + 1)
         return (next_bday - today).days
 
@@ -112,18 +106,15 @@ class Record:
         return f"{self.name.value}: phones[{phones}]; birthday[{bday}]; notes[{notes}]"
 
 class AddressBook(UserDict):
-    """Manages a collection of Record objects."""
+    """Manages multiple Record objects."""
     def add_record(self, record: Record) -> None:
-        # Add or update a record by contact name
         self.data[record.name.value] = record
 
     def find(self, name: str) -> Record:
-        # Retrieve a record by name, or raise KeyError
-        return self.data[name]
+        return self.data[name]  # KeyError if missing
 
     def delete(self, name: str) -> None:
-        # Delete a record by name, or raise KeyError
-        del self.data[name]
+        del self.data[name]  # KeyError if missing
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
@@ -142,12 +133,15 @@ class AddressBook(UserDict):
 DATA_FILE = "addressbook.pkl"
 
 def save_data(book: AddressBook, filename: str = DATA_FILE) -> None:
-    """Serialize the address book to disk using pickle."""
+    """Serialize the address book to disk."""
     with open(filename, "wb") as f:
         pickle.dump(book, f)
 
 def load_data(filename: str = DATA_FILE) -> AddressBook:
-    """Load the address book from disk, or return a new one if file not found."""
+    """
+    Attempt to load the address book from disk.
+    If the file does not exist, return a new AddressBook.
+    """
     try:
         with open(filename, "rb") as f:
             return pickle.load(f)
@@ -157,7 +151,10 @@ def load_data(filename: str = DATA_FILE) -> AddressBook:
 # -------------------- Error Handling Decorator --------------------
 
 def input_error(func):
-    """Decorator to handle IndexError, KeyError, ValueError and return user-friendly messages."""
+    """
+    Decorator to catch KeyError, ValueError, IndexError
+    and return user-friendly messages instead of tracebacks.
+    """
     def wrapper(args, book):
         try:
             return func(args, book)
