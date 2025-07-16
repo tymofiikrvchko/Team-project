@@ -1,4 +1,5 @@
 import re
+import re
 import datetime
 import pickle
 from collections import UserDict
@@ -24,6 +25,27 @@ class Name(Field):
         super().__init__(value)
 
 
+
+class Surname(Field):
+    """Mandatory contact surname."""
+    def __init__(self, value: str):
+        if not value.strip():
+            raise ValueError("Surname cannot be empty.")
+        super().__init__(value)
+
+
+ 
+
+class Address(Field):
+    """Mandatory contact name."""
+    def __init__(self, value: str):
+        if not value.strip():
+            raise ValueError("Address cannot be empty.")
+        super().__init__(value)
+       
+
+
+
 class Phone(Field):
     """Phone number: exactly 10 digits."""
     def __init__(self, value: str):
@@ -45,9 +67,11 @@ class Birthday(Field):
 # -------------------- Record & AddressBook --------------------
 
 class Record:
-    """Holds name, phones list, and optional birthday."""
-    def __init__(self, name: str):
+    """Holds name, surname, Address, phones list, and optional birthday."""
+    def __init__(self, name: str, surname: str, address: str):
         self.name = Name(name)
+        self.surname = Surname(surname)
+        self.address = Address(address)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
 
@@ -88,7 +112,7 @@ class Record:
             self.birthday.value.strftime("%d.%m.%Y")
             if self.birthday else "no birthday"
         )
-        return f"{self.name.value}: phones[{phones}]; birthday[{bday}]"
+        return f"{self.name.value} {self.surname.value}, Address: {self.address.value}, phones[{phones}]; birthday[{bday}]"
 
 
 class AddressBook(UserDict):
@@ -159,17 +183,40 @@ def input_error(func):
 
 @input_error
 def add_contact(args, book: AddressBook) -> str:
-    name, phone, *_ = args
+    # name, surname, Helloaddress, phone, *_ = args
+    name = input("Enter name: ").strip()
+    if not name:
+        return "Name cannot be be empty."
+
+    surname = input("Enter surname: ").strip()
+    if not surname:
+        return "Surname cannot be be empty."  
+
+    address = input("Enter address: ").strip()
+    if not address:
+        return "Adress cannot be be empty." 
+
+    phone = input("Enter phone number (10 digits): ").strip()
+    if not phone:
+        return "Phone number cannot be be empty."      
+
+
+
     try:
         rec = book.find(name)
-        message = "Contact updated."
-    except KeyError:
-        rec = Record(name)
-        book.add_record(rec)
-        message = "Contact added."
-    if phone:
         rec.add_phone(phone)
-    return message
+        return "Contact updated. New phone number added"
+    except KeyError:
+        rec = Record(name, surname, address)
+        rec.add_phone(phone)
+        book.add_record(rec)
+        # message = "Contact added."
+    # if phone:
+        # rec.add_phone(phone)
+    return "New contact added"
+
+
+
 
 @input_error
 def change_contact(args, book: AddressBook) -> str:
