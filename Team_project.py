@@ -50,6 +50,9 @@ class Record:
         self.name = Name(name)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
+        self.email = None
+        self.address = None
+
 
     def add_phone(self, phone: str) -> None:
         self.phones.append(Phone(phone))
@@ -80,7 +83,13 @@ class Record:
         next_bday = self.birthday.value.replace(year=today.year)
         if next_bday < today:
             next_bday = next_bday.replace(year=today.year + 1)
-        return (next_bday - today).days
+        return (next_bday - today).days  
+    
+    def update_email(self, email):
+        self.email = email.strip()
+
+    def update_address(self, address):
+        self.address = address.strip()
 
     def __str__(self):
         phones = ", ".join(p.value for p in self.phones) or "no phones"
@@ -88,7 +97,9 @@ class Record:
             self.birthday.value.strftime("%d.%m.%Y")
             if self.birthday else "no birthday"
         )
-        return f"{self.name.value}: phones[{phones}]; birthday[{bday}]"
+        email = f", email: {self.email}" if self.email else ""
+        address = f", address: {self.address}" if self.address else ""
+        return f"{self.name.value}: phones[{phones}]; birthday[{bday}] {email} {address}"
 
 
 class AddressBook(UserDict):
@@ -172,11 +183,33 @@ def add_contact(args, book: AddressBook) -> str:
     return message
 
 @input_error
-def change_contact(args, book: AddressBook) -> str:
-    name, old, new, *_ = args
-    rec = book.find(name)
-    rec.edit_phone(old, new)
-    return "Phone number updated."
+def change_contact(args, book):
+    name = input("Which contact do you want to change? >>> ").strip()
+    record = book.find(name)
+    if not record:
+        return "Ooops. Contact not found :-("
+    
+    field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
+
+
+    if field == "phone":
+        new_phone = input("Enter new phone >>> ").strip()
+        record.phones = []
+        record.add_phone(new_phone)
+        return f"Phone updated for {name.capitalize()}"
+    
+    elif field == "email":
+        new_email = input("Enter new email >>> ").strip()
+        record.update_email(new_email)
+        return f"Email updated for {name.capitalize()}"
+    
+    elif field == "address":
+        new_address = input("Enter new address >>> ").strip()
+        record.update_address(new_address)
+        return f"Address updated for {name.capitalize()}"
+    
+    else:
+        return "Unknown command. Choose from: phone / email / address"
 
 @input_error
 def phone_handler(args, book: AddressBook) -> str:
