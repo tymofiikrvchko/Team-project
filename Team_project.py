@@ -60,17 +60,13 @@ class Birthday(Field):
 class Record:
     """Represents a contact record with name, phones, optional birthday, and notes."""
     def __init__(self, name: str):
-        # Initialize the contact name
         self.name = Name(name)
-        # List of Phone objects
         self.phones: list[Phone] = []
-        # Optional Birthday object
         self.birthday: Optional[Birthday] = None
         # List of text notes
         self.notes: list[str] = []
 
     def add_phone(self, phone: str) -> None:
-        """Add a new phone number to this contact."""
         self.phones.append(Phone(phone))
 
     def remove_phone(self, phone: str) -> None:
@@ -82,7 +78,6 @@ class Record:
         raise ValueError(f"Phone {phone} not found.")
 
     def edit_phone(self, old: str, new: str) -> None:
-        """Replace an existing phone number with a new one."""
         for i, p in enumerate(self.phones):
             if p.value == old:
                 self.phones[i] = Phone(new)
@@ -90,13 +85,11 @@ class Record:
         raise ValueError(f"Phone {old} not found.")
 
     def add_birthday(self, bday_str: str) -> None:
-        """Set the contact's birthday (only if not already set)."""
         if self.birthday is not None:
             raise ValueError("Birthday already set.")
         self.birthday = Birthday(bday_str)
 
     def days_to_birthday(self) -> Optional[int]:
-        """Return days until next birthday, or None if no birthday set."""
         if not self.birthday:
             return None
         today = datetime.date.today()
@@ -113,11 +106,8 @@ class Record:
         self.notes.append(note)
 
     def __str__(self):
-        # Format phones list
         phones = ", ".join(p.value for p in self.phones) or "no phones"
-        # Format birthday
         bday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
-        # Format notes
         notes = " | ".join(self.notes) if self.notes else "no notes"
         return f"{self.name.value}: phones[{phones}]; birthday[{bday}]; notes[{notes}]"
 
@@ -136,7 +126,6 @@ class AddressBook(UserDict):
         del self.data[name]
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
-        """Return contacts with birthdays in the next 7 days."""
         today = datetime.date.today()
         upcoming: dict[str, datetime.date] = {}
         for rec in self.data.values():
@@ -184,7 +173,6 @@ def input_error(func):
 
 @input_error
 def add_contact(args, book: AddressBook) -> str:
-    """Handle 'add' command: add or update a contact."""
     name, phone, *_ = args
     try:
         rec = book.find(name)
@@ -207,7 +195,6 @@ def change_contact(args, book: AddressBook) -> str:
 
 @input_error
 def phone_handler(args, book: AddressBook) -> str:
-    """Handle 'phone' command: display contact's phone numbers."""
     name = args[0]
     rec = book.find(name)
     if not rec.phones:
@@ -216,14 +203,12 @@ def phone_handler(args, book: AddressBook) -> str:
 
 @input_error
 def show_all_handler(args, book: AddressBook) -> str:
-    """Handle 'all' command: list all contacts."""
     if not book.data:
         return "Address book is empty."
     return "\n".join(str(rec) for rec in book.data.values())
 
 @input_error
 def add_birthday(args, book: AddressBook) -> str:
-    """Handle 'add-birthday' command: set a contact's birthday."""
     name, bday = args
     rec = book.find(name)
     rec.add_birthday(bday)
@@ -231,7 +216,6 @@ def add_birthday(args, book: AddressBook) -> str:
 
 @input_error
 def show_birthday(args, book: AddressBook) -> str:
-    """Handle 'show-birthday' command: display a contact's birthday."""
     name = args[0]
     rec = book.find(name)
     if rec.birthday:
@@ -240,7 +224,6 @@ def show_birthday(args, book: AddressBook) -> str:
 
 @input_error
 def birthdays(args, book: AddressBook) -> str:
-    """Handle 'birthdays' command: list upcoming birthdays in the next week."""
     upcoming = book.get_upcoming_birthdays()
     if not upcoming:
         return "No birthdays in the next week."
@@ -248,7 +231,6 @@ def birthdays(args, book: AddressBook) -> str:
 
 @input_error
 def add_note_handler(args, book: AddressBook) -> str:
-    """Handle 'add-note' command: add a note to a contact."""
     name, *note_parts = args
     rec = book.find(name)
     note_text = " ".join(note_parts)
@@ -289,7 +271,6 @@ def parse_input(user_input: str) -> list[str]:
 # -------------------- Main Loop --------------------
 
 def main():
-    # Load data from disk or start with a new AddressBook
     book = load_data()
     print("Welcome to the assistant bot!")
     while True:
