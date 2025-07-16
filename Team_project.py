@@ -111,7 +111,10 @@ class AddressBook(UserDict):
         return self.data[name]  # KeyError if missing
 
     def delete(self, name: str) -> None:
-        del self.data[name]  # KeyError if missing
+        name = name.strip()
+        if name not in self.data:
+            raise KeyError("No such contact in you address book")
+        del self.data[name] 
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
@@ -184,10 +187,12 @@ def add_contact(args, book: AddressBook) -> str:
 
 @input_error
 def change_contact(args, book):
-    name = input("Which contact do you want to change? >>> ").strip()
-    record = book.find(name)
-    if not record:
+    name_input = input("Which contact do you want to change? >>> ").strip()
+    normalized_name = get_record_key(name_input, book)
+    if not normalized_name:
         return "Ooops. Contact not found :-("
+    
+    record = book.data[normalized_name]
     
     field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
 
@@ -196,20 +201,35 @@ def change_contact(args, book):
         new_phone = input("Enter new phone >>> ").strip()
         record.phones = []
         record.add_phone(new_phone)
-        return f"Phone updated for {name.capitalize()}"
+        return f"Phone updated for {normalized_name.capitalize()}"
     
     elif field == "email":
         new_email = input("Enter new email >>> ").strip()
         record.update_email(new_email)
-        return f"Email updated for {name.capitalize()}"
+        return f"Email updated for {normalized_name.capitalize()}"
     
     elif field == "address":
         new_address = input("Enter new address >>> ").strip()
         record.update_address(new_address)
-        return f"Address updated for {name.capitalize()}"
+        return f"Address updated for {normalized_name.capitalize()}"
     
     else:
         return "Unknown command. Choose from: phone / email / address"
+    
+@input_error
+def delete_contact(args, book):
+    name_input = input("Which contact do you want to delete? >>> ").strip()
+    normalized_name = get_record_key(name_input, book)
+    if not normalized_name :
+        return "Ooops. Contact not found :-("
+    
+    del book.data[normalized_name]
+    return f"Contact {normalized_name} was deleted"
+
+
+def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+    name_lower = name.strip().lower()
+    return next((key for key in book.data if key.lower() == name_lower), None)
 
 @input_error
 def phone_handler(args, book: AddressBook) -> str:
@@ -269,6 +289,11 @@ def main():
         command, *args = parts
         cmd = command.lower()
 
+        if len(parts) == 1 and get_record_key(cmd, book):
+            print(f"Detected contact name: '{cmd}'. Launching change mode...")
+            print(change_contact([], book))
+            continue
+
         if cmd in ("exit", "close"):
             save_data(book)
             print("Good bye!")
@@ -289,6 +314,8 @@ def main():
             print(show_birthday(args, book))
         elif cmd == "birthdays":
             print(birthdays(args, book))
+        elif cmd == "delete":
+            print(delete_contact(args, book))
         else:
             print("Invalid command.")
 
