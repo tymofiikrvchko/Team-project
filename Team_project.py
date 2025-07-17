@@ -3,48 +3,88 @@ import re
 import datetime
 import pickle
 from collections import UserDict
-from typing import Optional
+from typing import Optional, List
 from openai import OpenAI
 
+# -------------------- Configuration --------------------
+
+API_KEY_FILE = "key.txt"
+DATA_FILE    = "addressbook.pkl"
+NOTES_FILE   = "notesbook.pkl"
+
 # -------------------- OpenAI Client --------------------
-# Initialize OpenAI client for GPT-based note searching
-with open("key.txt", "r") as f:
-    api_key = f.read().strip()
 
-client = OpenAI(api_key=api_key)
+def load_api_key(path: str = API_KEY_FILE) -> str:
+    """Read the OpenAI API key from a text file."""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read().strip()
 
-# -------------------- Field Classes --------------------
+client = OpenAI(api_key=load_api_key())
+
+# -------------------- Command Definitions --------------------
+
+MAIN_COMMANDS    = ["contacts", "notes", "exit", "close"]
+CONTACT_COMMANDS = [
+    "hello", "add", "change", "phone", "all",
+    "add-birthday", "show-birthday", "birthdays",
+    "add-contact-note", "back", "exit", "close"
+]
+NOTE_COMMANDS    = [
+    "add-note", "list-notes", "add-tag",
+    "search-tag", "search-note", "back", "exit", "close"
+]
+
+# -------------------- Suggestion Logic --------------------
+
+def suggest_correction(user_input: str, valid_cmds: List[str]) -> Optional[str]:
+    """
+    Use GPT-4 to map a free-form user input (Russian or English)
+    to one of the exact valid command identifiers.
+    """
+    system_prompt = (
+        "You are a CLI assistant. Supported commands are exactly:\n"
+        + "\n".join(f"- {c}" for c in valid_cmds)
+        + "\nThe user may phrase commands in Russian or English."
+        + " If the input doesn't match exactly, return ONLY the best matching identifier."
+        + " If it already exactly matches a command, return an empty string."
+    )
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": f"User input: {user_input}"}
+        ],
+        temperature=0.0,
+        max_tokens=5
+    )
+    suggestion = response.choices[0].message.content.strip().strip("\"'")
+    return suggestion if suggestion in valid_cmds else None
+
+# -------------------- Data Models --------------------
 
 class Field:
     """Base class for record fields."""
     def __init__(self, value):
-        # Store the field value
         self.value = value
-
     def __str__(self):
-        # Return string representation of the value
         return str(self.value)
-
 
 class Name(Field):
     """Mandatory contact name."""
     def __init__(self, value: str):
-        # Ensure the name is not empty
         if not value.strip():
             raise ValueError("Name cannot be empty.")
         super().__init__(value)
 
-
 class Phone(Field):
-    """Phone number: exactly 10 digits."""
+    """Phone: exactly 10 digits."""
     def __init__(self, value: str):
-        if not value.isdigit() or len(value) != 10:
-            raise ValueError("Phone number must contain exactly 10 digits.")
+        if not (value.isdigit() and len(value) == 10):
+            raise ValueError("Phone must be exactly 10 digits.")
         super().__init__(value)
 
-
 class Birthday(Field):
-    """Birthday date in DD.MM.YYYY format."""
+    """Birthday in DD.MM.YYYY."""
     def __init__(self, value: str):
         try:
             dt = datetime.datetime.strptime(value, "%d.%m.%Y").date()
@@ -52,258 +92,326 @@ class Birthday(Field):
             raise ValueError("Invalid date format. Use DD.MM.YYYY")
         super().__init__(dt)
 
-# -------------------- Record & AddressBook --------------------
-
 class Record:
-    """Holds name, phones list, and optional birthda and notes."""
+    """Contact record: name, phones, birthday, and personal notes."""
     def __init__(self, name: str):
         self.name = Name(name)
-        self.phones: list[Phone] = []
+        self.phones: List[Phone] = []
         self.birthday: Optional[Birthday] = None
-        self.notes: list[str] = []
+        self.contact_notes: List[str] = []
 
-    def add_phone(self, phone: str) -> None:
+    def add_phone(self, phone: str):
         self.phones.append(Phone(phone))
 
-    def remove_phone(self, phone: str) -> None:
-        for i, p in enumerate(self.phones):
-            if p.value == phone:
-                del self.phones[i]
-                return
-        raise ValueError(f"Phone {phone} not found.")
-
-    def edit_phone(self, old: str, new: str) -> None:
+    def edit_phone(self, old: str, new: str):
         for i, p in enumerate(self.phones):
             if p.value == old:
                 self.phones[i] = Phone(new)
                 return
         raise ValueError(f"Phone {old} not found.")
 
-    def add_birthday(self, bday_str: str) -> None:
-        if self.birthday is not None:
+    def add_birthday(self, bday: str):
+        if self.birthday:
             raise ValueError("Birthday already set.")
-        self.birthday = Birthday(bday_str)
+        self.birthday = Birthday(bday)
 
     def days_to_birthday(self) -> Optional[int]:
         if not self.birthday:
             return None
         today = datetime.date.today()
-        next_bday = self.birthday.value.replace(year=today.year)
-        if next_bday < today:
-            next_bday = next_bday.replace(year=today.year + 1)
-        return (next_bday - today).days
+        next_bd = self.birthday.value.replace(year=today.year)
+        if next_bd < today:
+            next_bd = next_bd.replace(year=today.year + 1)
+        return (next_bd - today).days
 
-    def add_note(self, note: str) -> None:
-        """Add a textual note to this contact."""
+    def add_contact_note(self, note: str):
         if not note.strip():
             raise ValueError("Note cannot be empty.")
-        self.notes.append(note)
+        self.contact_notes.append(note)
 
     def __str__(self):
         phones = ", ".join(p.value for p in self.phones) or "no phones"
-        bday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
-        notes = " | ".join(self.notes) if self.notes else "no notes"
-        return f"{self.name.value}: phones[{phones}]; birthday[{bday}]; notes[{notes}]"
+        bd     = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
+        notes  = " | ".join(self.contact_notes) or "no contact notes"
+        return f"{self.name.value}: phones[{phones}]; birthday[{bd}]; notes[{notes}]"
 
 class AddressBook(UserDict):
-    """Manages multiple Record objects."""
-    def add_record(self, record: Record) -> None:
-        self.data[record.name.value] = record
-
+    """Holds all contact Records."""
+    def add_record(self, rec: Record):
+        self.data[rec.name.value] = rec
     def find(self, name: str) -> Record:
-        return self.data[name]  # KeyError if missing
-
-    def delete(self, name: str) -> None:
-        del self.data[name]  # KeyError if missing
-
+        return self.data[name]
+    def delete(self, name: str):
+        del self.data[name]
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
-        upcoming: dict[str, datetime.date] = {}
+        out = {}
         for rec in self.data.values():
-            days = rec.days_to_birthday()
-            if days is not None and 0 <= days < 7:
-                next_bday = rec.birthday.value.replace(year=today.year)
-                if next_bday < today:
-                    next_bday = next_bday.replace(year=today.year + 1)
-                upcoming[rec.name.value] = next_bday
-        return upcoming
+            d = rec.days_to_birthday()
+            if d is not None and 0 <= d < 7:
+                nb = rec.birthday.value.replace(year=today.year)
+                if nb < today:
+                    nb = nb.replace(year=today.year + 1)
+                out[rec.name.value] = nb
+        return out
+
+class GeneralNote:
+    """Global note with text, creation date, and tags."""
+    def __init__(self, text: str, tags: List[str]):
+        self.text       = text
+        self.tags       = tags
+        self.created_at = datetime.date.today()
+    def __str__(self):
+        tg = ",".join(self.tags) or "no tags"
+        return f"{self.created_at.isoformat()} [{tg}]: {self.text}"
+
+class GeneralNoteBook:
+    """Holds all global (unlinked) notes."""
+    def __init__(self):
+        self.notes: List[GeneralNote] = []
+    def add_note(self, text: str, tags: List[str]):
+        self.notes.append(GeneralNote(text, tags))
+    def list_notes(self) -> List[GeneralNote]:
+        return self.notes
+    def search_by_tag(self, tag: str) -> List[GeneralNote]:
+        return [n for n in self.notes if tag in n.tags]
 
 # -------------------- Persistence --------------------
 
-DATA_FILE = "addressbook.pkl"
-
-def save_data(book: AddressBook, filename: str = DATA_FILE) -> None:
-    """Serialize the address book to disk."""
-    with open(filename, "wb") as f:
+def save_data(book: AddressBook):
+    with open(DATA_FILE, "wb") as f:
         pickle.dump(book, f)
 
-def load_data(filename: str = DATA_FILE) -> AddressBook:
-    """
-    Attempt to load the address book from disk.
-    If the file does not exist, return a new AddressBook.
-    """
+def load_data() -> AddressBook:
     try:
-        with open(filename, "rb") as f:
+        with open(DATA_FILE, "rb") as f:
             return pickle.load(f)
-    except (FileNotFoundError, pickle.PickleError):
+    except FileNotFoundError:
         return AddressBook()
 
-# -------------------- Error Handling Decorator --------------------
+def save_notes(gn: GeneralNoteBook):
+    with open(NOTES_FILE, "wb") as f:
+        pickle.dump(gn, f)
+
+def load_notes() -> GeneralNoteBook:
+    try:
+        with open(NOTES_FILE, "rb") as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        return GeneralNoteBook()
+
+# -------------------- Error Decorator --------------------
 
 def input_error(func):
-    """
-    Decorator to catch KeyError, ValueError, IndexError
-    and return user-friendly messages instead of tracebacks.
-    """
-    def wrapper(args, book):
+    def wrapper(parts, *args):
         try:
-            return func(args, book)
-        except IndexError:
-            return "Enter name (and other args) please."
-        except KeyError:
-            return "Contact not found."
+            return func(parts, *args)
         except ValueError as e:
             return str(e)
+        except (IndexError, KeyError):
+            return "Invalid command."
     return wrapper
 
 # -------------------- Command Handlers --------------------
 
 @input_error
-def add_contact(args, book: AddressBook) -> str:
-    name, phone, *_ = args
-    try:
-        rec = book.find(name)
-        message = "Contact updated."
-    except KeyError:
-        rec = Record(name)
-        book.add_record(rec)
-        message = "Contact added."
-    if phone:
-        rec.add_phone(phone)
-    return message
+def handle_contact_commands(parts, book: AddressBook):
+    cmd, *args = parts
+    if cmd == "hello":
+        return "How can I help you with contacts?"
+    if cmd == "add":
+        name, phone = args
+        try:
+            book.find(name).add_phone(phone)
+            return "Phone added to existing contact."
+        except KeyError:
+            rec = Record(name)
+            rec.add_phone(phone)
+            book.add_record(rec)
+            return "New contact created."
+    if cmd == "change":
+        name, old, new = args
+        book.find(name).edit_phone(old, new)
+        return "Phone changed."
+    if cmd == "phone":
+        return ", ".join(p.value for p in book.find(args[0]).phones) or "No phones"
+    if cmd == "all":
+        return "\n".join(str(r) for r in book.data.values()) or "No contacts"
+    if cmd == "add-birthday":
+        name, bday = args
+        book.find(name).add_birthday(bday)
+        return "Birthday added."
+    if cmd == "show-birthday":
+        return book.find(args[0]).birthday.value.strftime("%d.%m.%Y")
+    if cmd == "birthdays":
+        ups = book.get_upcoming_birthdays()
+        return "\n".join(f"{n}: {d.strftime('%d.%m.%Y')}" for n, d in ups.items()) or "No upcoming birthdays"
+    if cmd == "add-contact-note":
+        name, *note = args
+        book.find(name).add_contact_note(" ".join(note))
+        return "Contact note added."
+    if cmd in ("back", "exit", "close"):
+        return "BACK"
+    return "Invalid command for contacts."
 
 @input_error
-def change_contact(args, book: AddressBook) -> str:
-    """Handle 'change' command: replace an existing phone number."""
-    name, old, new, *_ = args
-    rec = book.find(name)
-    rec.edit_phone(old, new)
-    return "Phone number updated."
-
-@input_error
-def phone_handler(args, book: AddressBook) -> str:
-    name = args[0]
-    rec = book.find(name)
-    if not rec.phones:
-        return "No phones for this contact."
-    return ", ".join(p.value for p in rec.phones)
-
-@input_error
-def show_all_handler(args, book: AddressBook) -> str:
-    if not book.data:
-        return "Address book is empty."
-    return "\n".join(str(rec) for rec in book.data.values())
-
-@input_error
-def add_birthday(args, book: AddressBook) -> str:
-    name, bday = args
-    rec = book.find(name)
-    rec.add_birthday(bday)
-    return "Birthday added."
-
-@input_error
-def show_birthday(args, book: AddressBook) -> str:
-    name = args[0]
-    rec = book.find(name)
-    if rec.birthday:
-        return rec.birthday.value.strftime("%d.%m.%Y")
-    return "Birthday not set."
-
-@input_error
-def birthdays(args, book: AddressBook) -> str:
-    upcoming = book.get_upcoming_birthdays()
-    if not upcoming:
-        return "No birthdays in the next week."
-    return "\n".join(f"{name}: {dt.strftime('%d.%m.%Y')}" for name, dt in upcoming.items())
-
-@input_error
-def add_note_handler(args, book: AddressBook) -> str:
-    name, *note_parts = args
-    rec = book.find(name)
-    note_text = " ".join(note_parts)
-    rec.add_note(note_text)
-    return "Note added."
-
-@input_error
-def search_note_handler(args, book: AddressBook) -> str:
-    """Handle 'search-note' command: find notes using GPT-4 semantic search."""
-    query = " ".join(args)
-    # Build list of all notes with contact identifiers
-    notes_list = []
-    for name, rec in book.data.items():
-        for idx, note in enumerate(rec.notes, 1):
-            notes_list.append(f"{name}#{idx}: {note}")
-    system_prompt = (
-        "You are a note search assistant. The existing notes are:\n" +
-        "\n".join(notes_list) +
-        "\nWhen the user queries, return the notes (with Name#Index) that best match their request."
-    )
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Search query: {query}"}
-        ],
-        temperature=0.0,
-        max_tokens=200
-    )
-    return response.choices[0].message.content.strip()
-
-# -------------------- CLI Utility --------------------
-
-def parse_input(user_input: str) -> list[str]:
-    """Split user input into command and arguments."""
-    return user_input.strip().split()
+def handle_global_notes(parts, gnbook: GeneralNoteBook):
+    cmd, *args = parts
+    if cmd == "add-note":
+        text = args[0] if args else input("Enter note text: ")
+        if not text.strip():
+            raise ValueError("Note cannot be empty.")
+        gnbook.add_note(text, [])
+        note = gnbook.notes[-1]
+        if input("Add tags? (yes/no): ").lower().startswith("y"):
+            tags = [t.strip() for t in input("Tags (comma-separated): ").split(",") if t.strip()]
+            note.tags.extend(tags)
+            return f"Global note added with tags: {', '.join(tags)}"
+        return "Global note added."
+    if cmd == "list-notes":
+        return "\n".join(str(n) for n in gnbook.list_notes()) or "No global notes"
+    if cmd == "add-tag":
+        idx, *tags = args
+        gnbook.notes[int(idx) - 1].tags.extend(tags)
+        return "Tags added."
+    if cmd == "search-tag":
+        tag = args[0] if args else input("Enter tag to search: ")
+        results = gnbook.search_by_tag(tag)
+        if results:
+            return "\n".join(str(n) for n in results)
+        return f"No notes with tag '{tag}'"
+    if cmd == "search-note":
+        query = args[0] if args else input("Enter search query: ")
+        notes_list = [f"{i+1}: {n.text}" for i, n in enumerate(gnbook.list_notes())]
+        system = (
+            "You are a note search assistant. Here are the notes with indices:\n"
+            + "\n".join(notes_list)
+            + "\nWhen the user queries, return a comma-separated list of indices (1-based) of the best matches."
+        )
+        resp = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": query}
+            ],
+            temperature=0.0,
+            max_tokens=50
+        )
+        idxs = [int(x) for x in re.findall(r"\d+", resp.choices[0].message.content)]
+        return "\n".join(str(gnbook.notes[i - 1]) for i in idxs)
+    if cmd in ("back", "exit", "close"):
+        return "BACK"
+    return "Invalid command for notes."
 
 # -------------------- Main Loop --------------------
 
 def main():
     book = load_data()
-    print("Welcome to the assistant bot!")
-    while True:
-        user_input = input("Enter a command: ")
-        parts = parse_input(user_input)
-        if not parts:
-            continue
-        command, *args = parts
-        cmd = command.lower()
+    gnbook = load_notes()
+    mode = "main"
 
-        if cmd in ("exit", "close"):
-            save_data(book)
-            print("Good bye!")
-            break
-        elif cmd == "hello":
-            print("How can I help you?")
-        elif cmd == "add":
-            print(add_contact(args, book))
-        elif cmd == "change":
-            print(change_contact(args, book))
-        elif cmd == "phone":
-            print(phone_handler(args, book))
-        elif cmd == "all":
-            print(show_all_handler(args, book))
-        elif cmd == "add-birthday":
-            print(add_birthday(args, book))
-        elif cmd == "show-birthday":
-            print(show_birthday(args, book))
-        elif cmd == "birthdays":
-            print(birthdays(args, book))
-        elif cmd == "add-note":
-            print(add_note_handler(args, book))
-        elif cmd == "search-note":
-            print(search_note_handler(args, book))
-        else:
-            print("Invalid command.")
+    while True:
+        if mode == "main":
+            choice = input("Choose mode [contacts/notes/exit]: ").strip().lower()
+            if choice in ("exit", "close"):
+                save_data(book)
+                save_notes(gnbook)
+                print("Good bye!")
+                break
+            if choice in ("contacts", "notes"):
+                mode = choice
+                continue
+
+        if mode == "contacts":
+            raw = input("Contacts> ").strip()
+            if raw in ("exit", "close"):
+                save_data(book); save_notes(gnbook)
+                print("Good bye!")
+                break
+            if raw == "back":
+                mode = "main"
+                continue
+
+            parts = raw.split()
+            cmd = parts[0]
+            if cmd not in CONTACT_COMMANDS:
+                sug = suggest_correction(raw, CONTACT_COMMANDS)
+                if sug and input(f"Did you mean '{sug}'? (yes/no): ").lower().startswith("y"):
+                    # Prompt for required args
+                    if sug == "add":
+                        name = input("Enter contact name: ")
+                        phone = input("Enter phone number: ")
+                        parts = [sug, name, phone]
+                    elif sug == "change":
+                        name = input("Enter contact name: ")
+                        old  = input("Enter old phone number: ")
+                        new  = input("Enter new phone number: ")
+                        parts = [sug, name, old, new]
+                    elif sug == "phone":
+                        name = input("Enter contact name: ")
+                        parts = [sug, name]
+                    elif sug == "all":
+                        parts = [sug]
+                    elif sug == "add-birthday":
+                        name = input("Enter contact name: ")
+                        bday = input("Enter birthday (DD.MM.YYYY): ")
+                        parts = [sug, name, bday]
+                    elif sug == "show-birthday":
+                        name = input("Enter contact name: ")
+                        parts = [sug, name]
+                    elif sug == "birthdays":
+                        parts = [sug]
+                    elif sug == "add-contact-note":
+                        name = input("Enter contact name: ")
+                        note = input("Enter note for contact: ")
+                        parts = [sug, name, note]
+                    else:
+                        parts = [sug] + parts[1:]
+                else:
+                    print("Invalid contacts command.")
+                    continue
+
+            res = handle_contact_commands(parts, book)
+            if res == "BACK":
+                mode = "main"
+            else:
+                print(res)
+
+        if mode == "notes":
+            raw = input("Notes> ").strip()
+            if raw in ("exit", "close"):
+                save_data(book); save_notes(gnbook)
+                print("Good bye!")
+                break
+            if raw == "back":
+                mode = "main"
+                continue
+
+            parts = raw.split()
+            cmd = parts[0]
+            if cmd not in NOTE_COMMANDS:
+                sug = suggest_correction(raw, NOTE_COMMANDS)
+                if sug and input(f"Did you mean '{sug}'? (yes/no): ").lower().startswith("y"):
+                    if sug == "add-note":
+                        text = input("Enter note text: ")
+                        parts = [sug, text]
+                    elif sug == "search-note":
+                        query = input("Enter search query: ")
+                        parts = [sug, query]
+                    elif sug == "search-tag":
+                        tag = input("Enter tag to search: ")
+                        parts = [sug, tag]
+                    else:
+                        parts = [sug] + parts[1:]
+                else:
+                    print("Invalid notes command.")
+                    continue
+
+            res = handle_global_notes(parts, gnbook)
+            if res == "BACK":
+                mode = "main"
+            else:
+                print(res)
 
 if __name__ == "__main__":
     main()
