@@ -9,6 +9,9 @@ __pycache__/
 # pull request list
 pullrequests-list.txt
 
+# data base
+addressbook.pkl
+
 # Distribution / packaging
 .Python
 build/
