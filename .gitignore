@@ -10,7 +10,8 @@ __pycache__/
 pullrequests-list.txt
 
 # data base
-addressbook.pkl
+*.pkl
+key.txt
 
 # Distribution / packaging
 .Python
