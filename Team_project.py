@@ -101,6 +101,9 @@ class AddressBook(UserDict):
     def add_record(self, record: Record) -> None:
         self.data[record.name.value] = record
 
+    def find(self, name: str) -> Record:
+        return self.data[name]
+    
     def delete(self, name: str) -> None:
         del self.data[name]
 
@@ -203,14 +206,14 @@ def add_birthday(args, book: AddressBook) -> str:
     name, bday = args
     rec = book.find(name)
     rec.add_birthday(bday)
-    return "[dim italic bold]\nBirthday added!\n[/dim italic bold]"
+    return f"[dim italic bold]\nBirthday added to contact {name.upper()}!\n[/dim italic bold]"
 
 @input_error
 def show_birthday(args, book: AddressBook) -> str:
-    name = args[0]
+    name = args[0].lower()
     rec = book.find(name)
     if rec.birthday:
-        return rec.birthday.value.strftime("%d.%m.%Y")
+        return f"[bold magenta]\n{name.upper()} has birthday {rec.birthday.value.strftime("%d.%m.%Y")}\n[/bold magenta]"
     return "[dim italic bold]\nBirthday not set.\n[/dim italic bold]"
 
 @input_error
@@ -218,7 +221,7 @@ def birthdays(args, book: AddressBook) -> str:
     upcoming = book.get_upcoming_birthdays()
     if not upcoming:
         return "[dim italic bold]\nNo birthdays in the next week.[/dim italic bold]"
-    return "\n".join(f"{name}: {dt.strftime('%d.%m.%Y')}" for name, dt in upcoming.items())
+    return "\n".join(f"[bold magenta]{name.upper()}'s birthday: {dt.strftime('%d.%m.%Y')}[/bold magenta]" for name, dt in upcoming.items())
 
 
 
@@ -283,7 +286,7 @@ def main():
     book = load_data()
     console.print("\nWelcome to [yellow]SYTObook[/yellow] - your personal contacts and notes assistant!", style="bold red")
     while True:
-        user_input = console.input("[bold]Enter a command: [/bold]")
+        user_input = console.input("[bold]Enter a command or type help: [/bold]")
         parts = parse_input(user_input)
         if not parts:
             continue
@@ -296,17 +299,18 @@ def main():
             break
         elif cmd in ("hello", "help"):
             if cmd == "hello":
-                console.print("\n[bold red]Hello! How can I help you?[/bold red]\n\n[bold underline cyan]📋 Команди бота[/bold underline cyan]")
+                console.print("\n[bold red]Hello! How can I help you?[/bold red]\n\n[bold underline cyan]📋 Choose one of the following commands:[/bold underline cyan]")
             else:
-                console.print("\n[bold red]How can I help you?[/bold red]\n\n[bold underline cyan]📋 Команди бота[/bold underline cyan]")
+                console.print("\n[bold red]How can I help you?[/bold red]\n\n[bold underline cyan]📋 Choose one of the following commands:[/bold underline cyan]")
             commands = [
                 ("[bold green]add[/bold green]", "➕ Add new contact"),
                 ("[bold green]change[/bold green]", "🔄 Change contact"),
+                ("[bold green]search[/bold green]", "🔍 Search contact by name or phone number"),
                 ("[bold green]delete[/bold green]", "🗑️ Delete contact"),
                 ("[bold green]all[/bold green]", "📇 Show all contacts"),
                 ("[bold green]birthdays[/bold green]", "🎂 Show birthdays within a specified period"),
                 ("[bold green]help[/bold green]", "❓ Show list of commands"),
-                ("[bold green]exit[/bold green] or [bold green]close[/bold green]", "🔚 Show list of commands\n")
+                ("[bold green]exit[/bold green] or [bold green]close[/bold green]", "🔚 End assistant work\n")
             ]
             for cmd, desc in commands:
                 console.print(f"{cmd} – {desc}")
@@ -321,17 +325,18 @@ def main():
                 console.print(result)
             else:
                 show_contacts_markdown(result)
-
         elif cmd == "all":
             show_contacts_markdown((show_all_handler(args, book)))
         elif cmd == "add-birthday":
-            print(add_birthday(args, book))
+            console.print(add_birthday(args, book))
         elif cmd == "show-birthday":
-            # show_contacts_markdown(show_birthday(args, book))
-            print(show_birthday(args, book))
+            console.print(show_birthday(args, book))
         elif cmd == "birthdays":
-            # show_contacts_markdown(birthdays(args, book))
-            print(birthdays(args, book))
+            result = birthdays(args, book)
+            if isinstance(result, str):
+                console.print(result)
+            else:
+                show_contacts_markdown(result)
         else:
             print("Invalid command.")
 
