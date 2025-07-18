@@ -85,6 +85,9 @@ class Record:
         self.email = Email(email)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
+        self.email = None
+        self.address = None
+
 
     def add_phone(self, phone: str) -> None:
         self.phones.append(Phone(phone))
@@ -115,15 +118,23 @@ class Record:
         next_bday = self.birthday.value.replace(year=today.year)
         if next_bday < today:
             next_bday = next_bday.replace(year=today.year + 1)
-        return (next_bday - today).days
+        return (next_bday - today).days  
+    
+    def update_email(self, email):
+        self.email = email.strip()
 
-    def __str__(self):
-        phones = ", ".join(p.value for p in self.phones) or "no phones"
-        bday = (
-            self.birthday.value.strftime("%d.%m.%Y")
-            if self.birthday else "no birthday"
-        )
-        return f"{self.name.value} {self.surname.value}, Address: {self.address.value or "no address"},Email:{self.email.value or "no email"}, phones[{phones}]; birthday[{bday}]"
+    def update_address(self, address):
+        self.address = address.strip()
+
+def __str__(self):
+    phones = ", ".join(p.value for p in self.phones) or "no phones"
+    bday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
+
+    surname = f" {self.surname.value}" if hasattr(self, "surname") and self.surname else ""
+    email   = f"Email: {self.email.value}"    if self.email   else "Email: no email"
+    address = f"Address: {self.address.value}" if self.address else "Address: no address"
+
+    return f"{self.name.value}{surname}, {address}, {email}, phones[{phones}]; birthday[{bday}]"
 
 
 class AddressBook(UserDict):
@@ -135,7 +146,10 @@ class AddressBook(UserDict):
         return self.data[name]  # KeyError if missing
 
     def delete(self, name: str) -> None:
-        del self.data[name]  # KeyError if missing
+        name = name.strip()
+        if name not in self.data:
+            raise KeyError("No such contact in you address book")
+        del self.data[name] 
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
@@ -255,11 +269,50 @@ def add_contact(args, book: AddressBook) -> str:
 
 
 @input_error
-def change_contact(args, book: AddressBook) -> str:
-    name, old, new, *_ = args
-    rec = book.find(name)
-    rec.edit_phone(old, new)
-    return "Phone number updated."
+def change_contact(args, book):
+    name_input = input("Which contact do you want to change? >>> ").strip()
+    normalized_name = get_record_key(name_input, book)
+    if not normalized_name:
+        return "Ooops. Contact not found :-("
+    
+    record = book.data[normalized_name]
+    
+    field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
+
+
+    if field == "phone":
+        new_phone = input("Enter new phone >>> ").strip()
+        record.phones = []
+        record.add_phone(new_phone)
+        return f"Phone updated for {normalized_name.capitalize()}"
+    
+    elif field == "email":
+        new_email = input("Enter new email >>> ").strip()
+        record.update_email(new_email)
+        return f"Email updated for {normalized_name.capitalize()}"
+    
+    elif field == "address":
+        new_address = input("Enter new address >>> ").strip()
+        record.update_address(new_address)
+        return f"Address updated for {normalized_name.capitalize()}"
+    
+    else:
+        return "Unknown command. Choose from: phone / email / address"
+    
+@input_error
+def delete_contact(args, book):
+    name_input = input("Which contact do you want to delete? >>> ").strip()
+    normalized_name = get_record_key(name_input, book)
+    if not normalized_name :
+        return "Ooops. Contact not found :-("
+    
+    del book.data[normalized_name]
+    return f"Contact {normalized_name} was deleted"
+
+
+def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+    name_lower = name.strip().lower()
+    return next((key for key in book.data if key.lower() == name_lower), None)
 
 @input_error
 def phone_handler(args, book: AddressBook) -> str:
@@ -330,6 +383,11 @@ def main():
         command, *args = parts
         cmd = command.lower()
 
+        if len(parts) == 1 and get_record_key(cmd, book):
+            print(f"Detected contact name: '{cmd}'. Launching change mode...")
+            print(change_contact([], book))
+            continue
+
         if cmd in ("exit", "close"):
             save_data(book)
             print("Good bye!")
@@ -352,6 +410,8 @@ def main():
             print(show_birthday(args, book))
         elif cmd == "birthdays":
             print(birthdays(args, book))
+        elif cmd == "delete":
+            print(delete_contact(args, book))
         else:
             print("Invalid command.")
 
