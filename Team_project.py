@@ -2,18 +2,17 @@ import re
 import datetime
 import pickle
 from collections import UserDict
-from typing import Optional
+from typing import Optional, List
+
+# ---- Rich UI ----
 from rich.console import Console
-from rich.table import Table
-from rich.markdown import Markdown
 from rich.columns import Columns
 from rich.panel import Panel
 
+console = Console()
 
 # -------------------- Field Classes --------------------
-
 class Field:
-    """Base class for record fields."""
     def __init__(self, value):
         self.value = value
 
@@ -22,15 +21,32 @@ class Field:
 
 
 class Name(Field):
-    """Mandatory contact name."""
     def __init__(self, value: str):
         if not value.strip():
             raise ValueError("Name cannot be empty.")
-        super().__init__(value)
+        super().__init__(value.strip())
+
+
+class Surname(Field):
+    def __init__(self, value: str):
+        super().__init__(value.strip())
+
+
+class Address(Field):
+    def __init__(self, value: str):
+        super().__init__(value.strip())
+
+
+class Email(Field):
+    EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
+
+    def __init__(self, value: str):
+        if value and not Email.EMAIL_RE.fullmatch(value.strip()):
+            raise ValueError("Invalid e‑mail format.")
+        super().__init__(value.strip())
 
 
 class Phone(Field):
-    """Phone number: exactly 10 digits."""
     def __init__(self, value: str):
         if not value.isdigit() or len(value) != 10:
             raise ValueError("Phone number must contain exactly 10 digits.")
@@ -38,7 +54,6 @@ class Phone(Field):
 
 
 class Birthday(Field):
-    """Birthday date in DD.MM.YYYY format."""
     def __init__(self, value: str):
         try:
             dt = datetime.datetime.strptime(value, "%d.%m.%Y").date()
@@ -46,25 +61,31 @@ class Birthday(Field):
             raise ValueError("Invalid date format. Use DD.MM.YYYY")
         super().__init__(dt)
 
-
 # -------------------- Record & AddressBook --------------------
-
 class Record:
-    """Holds name, phones list, and optional birthday."""
-    def __init__(self, name: str):
+    def __init__(
+        self,
+        name: str,
+        surname: str = "",
+        phone: str = "",
+        email: str = "",
+        address: str = "",
+        birthday: str = "",
+    ):
         self.name = Name(name)
-        self.phones: list[Phone] = []
+        self.surname = Surname(surname)
+        self.address = Address(address)
+        self.email = Email(email)
+        self.phones: List[Phone] = []
+        if phone:
+            self.add_phone(phone)
         self.birthday: Optional[Birthday] = None
+        if birthday:
+            self.add_birthday(birthday)
 
+    # ---- phone helpers ----
     def add_phone(self, phone: str) -> None:
         self.phones.append(Phone(phone))
-
-    def remove_phone(self, phone: str) -> None:
-        for i, p in enumerate(self.phones):
-            if p.value == phone:
-                del self.phones[i]
-                return
-        raise ValueError(f"Phone {phone} not found.")
 
     def edit_phone(self, old: str, new: str) -> None:
         for i, p in enumerate(self.phones):
@@ -73,8 +94,12 @@ class Record:
                 return
         raise ValueError(f"Phone {old} not found.")
 
+    def remove_phone(self, phone: str) -> None:
+        self.phones = [p for p in self.phones if p.value != phone]
+
+    # ---- other helpers ----
     def add_birthday(self, bday_str: str) -> None:
-        if self.birthday is not None:
+        if self.birthday:
             raise ValueError("Birthday already set.")
         self.birthday = Birthday(bday_str)
 
@@ -87,25 +112,32 @@ class Record:
             next_bday = next_bday.replace(year=today.year + 1)
         return (next_bday - today).days
 
+    # ---- printable ----
     def __str__(self):
-        phones = ", ".join(p.value for p in self.phones) or "no phones"
+        phones = ", ".join(p.value for p in self.phones) or "—"
         bday = (
             self.birthday.value.strftime("%d.%m.%Y")
-            if self.birthday else "no birthday"
+            if self.birthday else "—"
         )
-        return f"{self.name.value}: phones[{phones}]; birthday[{bday}]"
+        parts = [
+            f"{self.name.value} {self.surname.value}".strip(),
+            f"📞 {phones}",
+            f"📧 {self.email.value or '—'}",
+            f"📍 {self.address.value or '—'}",
+            f"🎂 {bday}",
+        ]
+        return "; ".join(parts)
 
 
 class AddressBook(UserDict):
-    """Manages multiple Record objects."""
     def add_record(self, record: Record) -> None:
-        self.data[record.name.value] = record
+        self.data[record.name.value.lower()] = record
 
     def find(self, name: str) -> Record:
-        return self.data[name]
-    
+        return self.data[name.lower()]
+
     def delete(self, name: str) -> None:
-        del self.data[name]
+        del self.data[name.lower()]
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
@@ -119,226 +151,234 @@ class AddressBook(UserDict):
                 upcoming[rec.name.value] = next_bday
         return upcoming
 
-
 # -------------------- Persistence --------------------
-
 DATA_FILE = "addressbook.pkl"
 
 def save_data(book: AddressBook, filename: str = DATA_FILE) -> None:
-    """Serialize the address book to disk."""
     with open(filename, "wb") as f:
         pickle.dump(book, f)
 
 def load_data(filename: str = DATA_FILE) -> AddressBook:
-    """
-    Attempt to load the address book from disk.
-    If the file does not exist, return a new AddressBook.
-    """
     try:
         with open(filename, "rb") as f:
             return pickle.load(f)
     except (FileNotFoundError, pickle.PickleError):
         return AddressBook()
 
-# -------------------- Error Handling Decorator --------------------
-
+# -------------------- Decorator --------------------
 def input_error(func):
-    """
-    Decorator to catch KeyError, ValueError, IndexError
-    and return user-friendly messages instead of tracebacks.
-    """
     def wrapper(args, book):
         try:
             return func(args, book)
         except IndexError:
-            return "Enter name (and other args) please."
+            return "[italic red]❗ Not enough arguments.[/]"
         except KeyError:
-            return "Contact not found."
+            return "[italic red]❗ Contact not found.[/]"
         except ValueError as e:
-            return str(e)
+            return f"[italic red]❗ {e}[/]"
     return wrapper
 
+# -------------------- Helpers for Rich output --------------------
+def display_contacts(records):
+    if not records:
+        console.print("[dim italic]📭 No contacts to display.[/]")
+        return
+    panels = []
+    for rec in records:
+        phones = ", ".join(p.value for p in rec.phones) or "—"
+        bday = rec.birthday.value.strftime("%d.%m.%Y") if rec.birthday else "—"
+        body = (
+            f"[b]📞[/b] {phones}\n"
+            f"[b]📧[/b] {rec.email.value if rec.email else '—'}\n"
+            f"[b]📍[/b] {rec.address.value if rec.email else '—'}\n"
+            f"[b]🎂[/b] {bday}"
+        )
+        title = f"👤 {rec.name.value.upper()} {rec.surname.value.upper()}"
+        panels.append(Panel(body, title=title.strip(), border_style="cyan", expand=False))
+    console.print(Columns(panels, equal=True, expand=True))
 
 # -------------------- Command Handlers --------------------
-
 @input_error
-def add_contact(args, book: AddressBook) -> str:
-    name, phone, *_ = args
+def add_contact(args, book: AddressBook):
+    """
+    add <Name> [Surname] [Phone] [Email] [Address]
+    Если аргументов нет – запускается пошаговый ввод.
+    """
+    if not args:                          # interactive mode
+        name = console.input("Name*: ").strip()
+        surname = console.input("Surname: ").strip()
+        phone = console.input("Phone (10 digits): ").strip()
+        email = console.input("Email: ").strip()
+        address = console.input("Address: ").strip()
+    else:                                 # CLI mode
+        name = args[0]
+        surname = args[1] if len(args) > 1 else ""
+        phone = args[2] if len(args) > 2 else ""
+        email = args[3] if len(args) > 3 else ""
+        address = " ".join(args[4:]) if len(args) > 4 else ""
     try:
-        rec = book.find(name)
-        message = "[dim italic bold]\nContact updated!\n[/dim italic bold]"
+        record = book.find(name)
+        # обновляем существующий
+        if phone:
+            record.add_phone(phone)
+        if surname:
+            record.surname = Surname(surname)
+        if email:
+            record.email = Email(email)
+        if address:
+            record.address = Address(address)
+        msg = "updated"
     except KeyError:
-        rec = Record(name)
-        book.add_record(rec)
-        message = "[dim italic bold]\nContact added!\n[/dim italic bold]"
-    if phone:
-        rec.add_phone(phone)
-    return message
+        record = Record(name, surname, phone, email, address)
+        book.add_record(record)
+        msg = "added"
+    return f"[green]✔ Contact {msg}![/]"
 
 @input_error
-def change_contact(args, book: AddressBook) -> str:
-    name, old, new, *_ = args
-    rec = book.find(name)
-    rec.edit_phone(old, new)
-    return "[dim italic bold]\nPhone number updated!\n[/dim italic bold]"
+def change_contact(args, book: AddressBook):
+    """
+    change <Name> phone <old> <new>
+    change <Name> email <new>
+    change <Name> address <new address ...>
+    change <Name> surname <new>
+    """
+    name = args[0]
+    field = args[1].lower()
+    record = book.find(name)
+    if field == "phone":
+        old, new = args[2], args[3]
+        record.edit_phone(old, new)
+        return "[green]✔ Phone updated.[/]"
+    elif field == "email":
+        record.email = Email(args[2])
+        return "[green]✔ Email updated.[/]"
+    elif field == "address":
+        record.address = Address(" ".join(args[2:]))
+        return "[green]✔ Address updated.[/]"
+    elif field == "surname":
+        record.surname = Surname(args[2])
+        return "[green]✔ Surname updated.[/]"
+    else:
+        raise ValueError("Unknown field. Use phone / email / address / surname.")
 
 @input_error
-def search_handler(args, book: AddressBook) -> str:
+def delete_contact(args, book: AddressBook):
+    name = args[0]
+    book.delete(name)
+    return f"[green]✔ Contact {name.upper()} deleted.[/]"
+
+@input_error
+def search_handler(args, book: AddressBook):
     query = args[0].lower()
     results = []
-    for record in book.data.values():
-        name_search = query in record.name.value.lower()
-        phone_search = any(query in phone.value for phone in record.phones)
-        if name_search or phone_search:
-            results.append(record)
+    for rec in book.data.values():
+        if query in rec.name.value.lower() or any(query in p.value for p in rec.phones):
+            results.append(rec)
     if not results:
-        return "[dim italic bold]\nNo matching contacts found.\n[/dim italic bold]"
+        return "[italic]🔍 No matches.[/]"
     return results
 
 @input_error
-def show_all_handler(args, book: AddressBook) -> str:
+def show_all_handler(args, book: AddressBook):
     if not book.data:
-        return "[dim italic bold]\nAddress book is empty.\n[/dim italic bold]"
-    return book.data.values()
+        return "[italic]📭 Address book is empty.[/]"
+    return list(book.data.values())
 
 @input_error
-def add_birthday(args, book: AddressBook) -> str:
+def add_birthday(args, book: AddressBook):
     name, bday = args
     rec = book.find(name)
     rec.add_birthday(bday)
-    return f"[dim italic bold]\nBirthday added to contact {name.upper()}!\n[/dim italic bold]"
+    return "[green]✔ Birthday added.[/]"
 
 @input_error
-def show_birthday(args, book: AddressBook) -> str:
-    name = args[0].lower()
+def show_birthday(args, book: AddressBook):
+    name = args[0]
     rec = book.find(name)
     if rec.birthday:
-        return f"[bold magenta]\n{name.upper()} has birthday {rec.birthday.value.strftime("%d.%m.%Y")}\n[/bold magenta]"
-    return "[dim italic bold]\nBirthday not set.\n[/dim italic bold]"
+        return f"[bold]{rec.birthday.value.strftime('%d.%m.%Y')}[/]"
+    return "[italic]🎂 Birthday not set.[/]"
 
 @input_error
-def birthdays(args, book: AddressBook) -> str:
+def birthdays(args, book: AddressBook):
     upcoming = book.get_upcoming_birthdays()
     if not upcoming:
-        return "[dim italic bold]\nNo birthdays in the next week.[/dim italic bold]"
-    return "\n".join(f"[bold magenta]{name.upper()}'s birthday: {dt.strftime('%d.%m.%Y')}[/bold magenta]" for name, dt in upcoming.items())
+        return "[italic]🎉 No birthdays this week.[/]"
+    lines = [
+        f"[bold]{n.upper()}[/] – {dt.strftime('%d.%m.%Y')}"
+        for n, dt in upcoming.items()
+    ]
+    return "\n".join(lines)
 
-
-
-# ------------------Output Contacts--------------------
-
-def show_contacts_markdown(contacts):
-    console = Console()
-    if not contacts:
-        console.print("[dim italic bold]\nСписок контактів порожній.\n[/dim italic bold]")
-        return
-
-    contacts_sorted = sorted(
-        contacts,
-        key=lambda c: c.name.value.lower() if hasattr(c.name, "value") else str(c.name).lower()
-    )
-
-    contact_panels = []
-
-    for contact in contacts_sorted:
-        name = contact.name.value if hasattr(contact.name, "value") else str(contact.name)
-        phones = getattr(contact, "phones", [])
-        emails = getattr(contact, "emails", [])
-        address = getattr(contact, "address", None)
-        notes = getattr(contact, "notes", None)
-        birthday = getattr(contact, "birthday", None)
-        # favorite = getattr(contact, "favorite", False)
-
-        phones_str = ", ".join(p.value if hasattr(p, "value") else str(p) for p in phones) or "—"
-        emails_str = ", ".join(str(e) for e in emails) or "—"
-        birthday_str = birthday.value.strftime("%d.%m.%Y") if birthday else "—"
-        address_str = address or "—"
-        notes_str = notes or "—"
-        # fav_str = "⭐ Так" if favorite else "—"
-
-        contact_text = (
-            f"[b]📞 Телефони:[/b] {phones_str}\n"
-            f"[b]📧 Email:[/b] {emails_str}\n"
-            f"[b]🎂 День народження:[/b] {birthday_str}\n"
-            f"[b]📍 Адреса:[/b] {address_str}\n"
-            f"[b]📝 Нотатки:[/b] {notes_str}\n"
-            # f"[b]⭐ Улюблений:[/b] {fav_str}"
-        )
-
-        panel = Panel(contact_text, title=f"👤 {name.upper()}", border_style="cyan", expand=False)
-        contact_panels.append(panel)
-
-    console.print(Columns(contact_panels, equal=True, expand=True))
-
-# -------------------- CLI Utility --------------------
-
-def parse_input(user_input: str) -> list[str]:
-    """Split user input into command and arguments."""
-    return user_input.strip().split()
-
+def help_message():
+    cmds = {
+        "add": "add <Ім'я> [Прізвище] [Телефон] [Email] [Адреса] — додати / оновити контакт",
+        "change": "change <Ім'я> <поле> ... — змінити phone / email / address / surname",
+        "delete": "delete <Ім'я> — видалити контакт",
+        "search": "search <рядок пошуку> — пошук за ім'ям або телефоном",
+        "all": "all — показати всі контакти",
+        "add-birthday": "add-birthday <Ім'я> <ДД.ММ.РРРР> — додати день народження контакту",
+        "show-birthday": "show-birthday <Ім'я> — показати день народження контакту",
+        "birthdays": "birthdays — найближчі дні народження (на тиждень вперед)",
+        "help / hello": "список команд",
+        "exit / close": "вийти та зберегти",
+    }
+    for c, d in cmds.items():
+        console.print(f"[cyan]{c:15}[/] {d}")
 
 # -------------------- Main Loop --------------------
-
-
+def parse_input(text: str) -> List[str]:
+    return text.strip().split()
 
 def main():
-    console = Console()
     book = load_data()
-    console.print("\nWelcome to [yellow]SYTObook[/yellow] - your personal contacts and notes assistant!", style="bold red")
+    console.print("\n[bold yellow]SYTObook[/] – your personal contacts assistant 🤖\n")
     while True:
-        user_input = console.input("[bold]Enter a command or type help: [/bold]")
-        parts = parse_input(user_input)
+        raw = console.input("[bold]>>> [/]")
+        parts = parse_input(raw)
         if not parts:
             continue
-        command, *args = parts
-        cmd = command.lower()
+        cmd, *args = parts
+        cmd = cmd.lower()
+
+        # quick name detection for interactive change
+        if cmd in book.data and not args:
+            console.print("[italic]Detected contact – entering change wizard…[/]")
+            console.print(help_message())
+            continue
 
         if cmd in ("exit", "close"):
             save_data(book)
-            print("Good bye!")
+            console.print("[bold green]Good bye![/]")
             break
         elif cmd in ("hello", "help"):
-            if cmd == "hello":
-                console.print("\n[bold red]Hello! How can I help you?[/bold red]\n\n[bold underline cyan]📋 Choose one of the following commands:[/bold underline cyan]")
-            else:
-                console.print("\n[bold red]How can I help you?[/bold red]\n\n[bold underline cyan]📋 Choose one of the following commands:[/bold underline cyan]")
-            commands = [
-                ("[bold green]add[/bold green]", "➕ Add new contact"),
-                ("[bold green]change[/bold green]", "🔄 Change contact"),
-                ("[bold green]search[/bold green]", "🔍 Search contact by name or phone number"),
-                ("[bold green]delete[/bold green]", "🗑️ Delete contact"),
-                ("[bold green]all[/bold green]", "📇 Show all contacts"),
-                ("[bold green]birthdays[/bold green]", "🎂 Show birthdays within a specified period"),
-                ("[bold green]help[/bold green]", "❓ Show list of commands"),
-                ("[bold green]exit[/bold green] or [bold green]close[/bold green]", "🔚 End assistant work\n")
-            ]
-            for cmd, desc in commands:
-                console.print(f"{cmd} – {desc}")
+            help_message()
         elif cmd == "add":
             console.print(add_contact(args, book))
         elif cmd == "change":
             console.print(change_contact(args, book))
-            # Changed the command "phone" to the command "search"
+        elif cmd == "delete":
+            console.print(delete_contact(args, book))
         elif cmd == "search":
-            result = search_handler(args, book)
-            if isinstance(result, str):
-                console.print(result)
+            res = search_handler(args, book)
+            if isinstance(res, str):
+                console.print(res)
             else:
-                show_contacts_markdown(result)
+                display_contacts(res)
         elif cmd == "all":
-            show_contacts_markdown((show_all_handler(args, book)))
+            res = show_all_handler(args, book)
+            if isinstance(res, str):
+                console.print(res)
+            else:
+                display_contacts(res)
         elif cmd == "add-birthday":
             console.print(add_birthday(args, book))
         elif cmd == "show-birthday":
             console.print(show_birthday(args, book))
         elif cmd == "birthdays":
-            result = birthdays(args, book)
-            if isinstance(result, str):
-                console.print(result)
-            else:
-                show_contacts_markdown(result)
+            console.print(birthdays(args, book))
         else:
-            print("Invalid command.")
+            console.print("[red]Unknown command. Type help[/]")
 
 if __name__ == "__main__":
     main()
