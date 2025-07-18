@@ -1,6 +1,3 @@
-###############################################################################
-# Assistant CLI – Rich‑only edition (2025‑07‑18, correct upcoming birthdays)
-###############################################################################
 import re
 import datetime
 import pickle
