@@ -3,8 +3,31 @@ import datetime
 import pickle
 from collections import UserDict
 from typing import Optional
+import getpass
+# -------------------- registration / login -------------
+def register(users):
+    print("===== New User Registration =====")
+    while True:
+        username = input("Enter your name >>> ").strip()
+        if username in users:
+            print(f"User {username} already registered.")
+        else:
+            break
+    password = getpass.getpass("Enter a password >>> ").strip()
+    users[username] = password
+    save_users(users)
+    return username
 
 
+def login(users):
+    print("===== Login =====")
+    username = input("Login >>> ").strip()
+    password = input("Password >>> ").strip()
+    if users.get(username) == password:
+        return username
+    else:
+        print(f"Invalid credentials. Check you login or password.")
+        return None
 # -------------------- Field Classes --------------------
 
 class Field:
@@ -148,6 +171,20 @@ def load_data(filename: str = DATA_FILE) -> AddressBook:
             return pickle.load(f)
     except (FileNotFoundError, pickle.PickleError):
         return AddressBook()
+    
+
+USERS_FILE = "users.pkl"
+
+def load_users():
+    try:
+        with open(USERS_FILE, "rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, pickle.PickleError):
+        return {}
+    
+def save_users(users):
+    with open(USERS_FILE, "wb") as f:
+        pickle.dump(users, f)
 
 
 # -------------------- Error Handling Decorator --------------------
@@ -279,8 +316,26 @@ def parse_input(user_input: str) -> list[str]:
 # -------------------- Main Loop --------------------
 
 def main():
-    book = load_data()
+    
+    users = load_users()
     print("Welcome to the assistant bot!")
+
+    while True:
+        choice = input("Do you want to (l)ogin or (r)egister? >>> ").strip()
+        if choice == "r":
+            username = register(users)
+            break
+        elif choice == "l":
+            username = login(users)
+            if username:
+                break
+        else:
+            print("Incalid input. Please enter 'l' for login or 'r' for register." )
+
+    print(f"Hello, {username.capitalize()}, glad to see you again!")
+    
+    book = load_data()
+    
     while True:
         user_input = input("Enter a command: ")
         parts = parse_input(user_input)
