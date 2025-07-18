@@ -10,6 +10,7 @@ from typing import Optional
 
 class Field:
     """Base class for record fields."""
+
     def __init__(self, value):
         self.value = value
 
@@ -19,45 +20,39 @@ class Field:
 
 class Name(Field):
     """Mandatory contact name."""
+
     def __init__(self, value: str):
         if not value.strip():
             raise ValueError("Name cannot be empty.")
         super().__init__(value)
 
 
-
 class Surname(Field):
     """optional"""
+
     def __init__(self, value: str):
-        
-            
         super().__init__(value.strip())
 
-
- 
 
 class Address(Field):
     """optional"""
+
     def __init__(self, value: str):
-        
-            
         super().__init__(value.strip())
 
 
- 
 class Email(Field):
     """Email validation."""
+
     def __init__(self, value: str):
         if value and not re.match(r"[^@]+@[^@]+\.[^@]+", value):
             raise ValueError("Invalid email format.")
         super().__init__(value.strip())
-              
-       
-
 
 
 class Phone(Field):
     """Phone number: exactly 10 digits."""
+
     def __init__(self, value: str):
         if not value.isdigit() or len(value) != 10:
             raise ValueError("Phone number must contain exactly 10 digits.")
@@ -66,6 +61,7 @@ class Phone(Field):
 
 class Birthday(Field):
     """Birthday date in DD.MM.YYYY format."""
+
     def __init__(self, value: str):
         try:
             dt = datetime.datetime.strptime(value, "%d.%m.%Y").date()
@@ -78,6 +74,7 @@ class Birthday(Field):
 
 class Record:
     """Holds name, surname, Address, phones list, and optional birthday."""
+
     def __init__(self, name: str, surname: str, address: str, email: str):
         self.name = Name(name)
         self.surname = Surname(surname)
@@ -85,9 +82,6 @@ class Record:
         self.email = Email(email)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
-        self.email = None
-        self.address = None
-
 
     def add_phone(self, phone: str) -> None:
         self.phones.append(Phone(phone))
@@ -118,27 +112,29 @@ class Record:
         next_bday = self.birthday.value.replace(year=today.year)
         if next_bday < today:
             next_bday = next_bday.replace(year=today.year + 1)
-        return (next_bday - today).days  
-    
+        return (next_bday - today).days
+
     def update_email(self, email):
         self.email = email.strip()
 
     def update_address(self, address):
         self.address = address.strip()
 
-def __str__(self):
-    phones = ", ".join(p.value for p in self.phones) or "no phones"
-    bday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
 
-    surname = f" {self.surname.value}" if hasattr(self, "surname") and self.surname else ""
-    email   = f"Email: {self.email.value}"    if self.email   else "Email: no email"
-    address = f"Address: {self.address.value}" if self.address else "Address: no address"
+    def __str__(self):
+        phones = ", ".join(p.value for p in self.phones) or "no phones"
+        bday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "no birthday"
 
-    return f"{self.name.value}{surname}, {address}, {email}, phones[{phones}]; birthday[{bday}]"
+        surname = f" {self.surname.value}" if hasattr(self, "surname") and self.surname else ""
+        email = f"Email: {self.email.value}" if self.email else "Email: no email"
+        address = f"Address: {self.address.value}" if self.address else "Address: no address"
+
+        return f"{self.name.value}{surname}, {address}, {email}, phones[{phones}]; birthday[{bday}]"
 
 
 class AddressBook(UserDict):
     """Manages multiple Record objects."""
+
     def add_record(self, record: Record) -> None:
         self.data[record.name.value] = record
 
@@ -149,7 +145,7 @@ class AddressBook(UserDict):
         name = name.strip()
         if name not in self.data:
             raise KeyError("No such contact in you address book")
-        del self.data[name] 
+        del self.data[name]
 
     def get_upcoming_birthdays(self) -> dict[str, datetime.date]:
         today = datetime.date.today()
@@ -168,10 +164,12 @@ class AddressBook(UserDict):
 
 DATA_FILE = "addressbook.pkl"
 
+
 def save_data(book: AddressBook, filename: str = DATA_FILE) -> None:
     """Serialize the address book to disk."""
     with open(filename, "wb") as f:
         pickle.dump(book, f)
+
 
 def load_data(filename: str = DATA_FILE) -> AddressBook:
     """
@@ -192,6 +190,7 @@ def input_error(func):
     Decorator to catch KeyError, ValueError, IndexError
     and return user-friendly messages instead of tracebacks.
     """
+
     def wrapper(args, book):
         try:
             return func(args, book)
@@ -201,6 +200,7 @@ def input_error(func):
             return "Contact not found."
         except ValueError as e:
             return str(e)
+
     return wrapper
 
 
@@ -216,26 +216,25 @@ def add_contact(args, book: AddressBook) -> str:
     surname = input("Enter surname(optional) ").strip()
 
     while True:
-       phone = input("Enter phone number (10 digits, optional): ").strip()
-       if not phone:
-           break 
-       try:
-           Phone(phone)  
-           break
-       except ValueError as e:
-           print(f"Invalid phone: {e}") 
+        phone = input("Enter phone number (10 digits, optional): ").strip()
+        if not phone:
+            break
+        try:
+            Phone(phone)
+            break
+        except ValueError as e:
+            print(f"Invalid phone: {e}")
 
     while True:
         email = input("Enter email(optional): ").strip()
         if not email:
             break
         try:
-            Email(email)  
+            Email(email)
             break
         except ValueError as e:
-            print(f"Invalid email: {e}") 
+            print(f"Invalid email: {e}")
 
-    
     address = input("Enter address(optional): ").strip()
     while True:
         bday_input = input("Enter birthday (DD.MM.YYYY, optional: )").strip()
@@ -246,26 +245,22 @@ def add_contact(args, book: AddressBook) -> str:
             bday = Birthday(bday_input)
             break
         except ValueError as e:
-            print (f"Invalid birthday: {e}")        
-
-
+            print(f"Invalid birthday: {e}")
 
     try:
         rec = book.find(name)
         if phone:
-         rec.add_phone(phone)
+            rec.add_phone(phone)
         return "Contact exists - added new phone if provided."
     except KeyError:
-        rec = Record(name, surname, address,email)
+        rec = Record(name, surname, address, email)
         if phone:
-         rec.add_phone(phone)
+            rec.add_phone(phone)
         if bday:
-          rec.birthday = bday  
+            rec.birthday = bday
         book.add_record(rec)
-    
+
         return "New contact added"
-
-
 
 
 @input_error
@@ -274,38 +269,38 @@ def change_contact(args, book):
     normalized_name = get_record_key(name_input, book)
     if not normalized_name:
         return "Ooops. Contact not found :-("
-    
-    record = book.data[normalized_name]
-    
-    field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
 
+    record = book.data[normalized_name]
+
+    field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
 
     if field == "phone":
         new_phone = input("Enter new phone >>> ").strip()
         record.phones = []
         record.add_phone(new_phone)
         return f"Phone updated for {normalized_name.capitalize()}"
-    
+
     elif field == "email":
         new_email = input("Enter new email >>> ").strip()
         record.update_email(new_email)
         return f"Email updated for {normalized_name.capitalize()}"
-    
+
     elif field == "address":
         new_address = input("Enter new address >>> ").strip()
         record.update_address(new_address)
         return f"Address updated for {normalized_name.capitalize()}"
-    
+
     else:
         return "Unknown command. Choose from: phone / email / address"
-    
+
+
 @input_error
 def delete_contact(args, book):
     name_input = input("Which contact do you want to delete? >>> ").strip()
     normalized_name = get_record_key(name_input, book)
-    if not normalized_name :
+    if not normalized_name:
         return "Ooops. Contact not found :-("
-    
+
     del book.data[normalized_name]
     return f"Contact {normalized_name} was deleted"
 
@@ -313,6 +308,7 @@ def delete_contact(args, book):
 def get_record_key(name: str, book: AddressBook) -> Optional[str]:
     name_lower = name.strip().lower()
     return next((key for key in book.data if key.lower() == name_lower), None)
+
 
 @input_error
 def phone_handler(args, book: AddressBook) -> str:
@@ -322,11 +318,13 @@ def phone_handler(args, book: AddressBook) -> str:
         return "No phones for this contact."
     return ", ".join(p.value for p in rec.phones)
 
+
 @input_error
 def show_all_handler(args, book: AddressBook) -> str:
     if not book.data:
         return "Address book is empty."
     return "\n".join(str(rec) for rec in book.data.values())
+
 
 @input_error
 def add_birthday(args, book: AddressBook) -> str:
@@ -334,6 +332,7 @@ def add_birthday(args, book: AddressBook) -> str:
     rec = book.find(name)
     rec.add_birthday(bday)
     return "Birthday added."
+
 
 @input_error
 def show_birthday(args, book: AddressBook) -> str:
@@ -343,6 +342,7 @@ def show_birthday(args, book: AddressBook) -> str:
         return rec.birthday.value.strftime("%d.%m.%Y")
     return "Birthday not set."
 
+
 @input_error
 def birthdays(args, book: AddressBook) -> str:
     upcoming = book.get_upcoming_birthdays()
@@ -350,6 +350,7 @@ def birthdays(args, book: AddressBook) -> str:
         return "No birthdays in the next week."
     return "\n".join(f"{name}: {dt.strftime('%d.%m.%Y')}"
                      for name, dt in upcoming.items())
+
 
 @input_error
 def change_address(args, book: AddressBook) -> str:
@@ -360,7 +361,7 @@ def change_address(args, book: AddressBook) -> str:
 
     rec = book.find(name)
     rec.address = Address(new_adress)
-    return "Address uodated."
+    return "Address updated."
 
 
 # -------------------- CLI Utility --------------------
@@ -396,7 +397,7 @@ def main():
             print("How can I help you?")
         elif cmd == "add":
             print(add_contact(args, book))
-        elif cmd =="change-address":  
+        elif cmd == "change-address":
             print(change_address(args, book))
         elif cmd == "change":
             print(change_contact(args, book))
@@ -414,6 +415,7 @@ def main():
             print(delete_contact(args, book))
         else:
             print("Invalid command.")
+
 
 if __name__ == "__main__":
     main()
