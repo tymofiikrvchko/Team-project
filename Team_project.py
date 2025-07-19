@@ -10,6 +10,7 @@ from typing import Optional, List, Tuple, Type
 from rich.console import Console
 from rich.columns import Columns
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
@@ -48,15 +49,14 @@ CONTACT_DESC = {
 }
 
 NOTE_DESC = {
-    "add-note":   "add-note <text>",
-    "list-notes": "list-notes",
-    "add-tag":    "add-tag <idx> <tag1> …",
-    "search-tag": "search-tag <tag>",
-    "search-note":"search-note <phrase>",
-    "back":  "back – главное меню",
-    "exit":  "exit / close – сохранить и выйти",
-    "hello": "hello / help – показать помощь",
-    "help":  "help – то же самое",
+    "add-note":   "add new note",
+    "list-notes": "view all notes",
+    "add-tag":    "add new tags",
+    "search-tag": "find a note by tag",
+    "search-note":"find note by text",
+    "back":  "return to mode selection",
+    "exit | close":  "end assistant work",
+    "hello | help": "output all commands"
 }
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ def show_records(recs: List[Record]):
         return
     console.print(Columns(
         [Panel(_panel_body(r),
-               title=f"{r.name.value} {r.surname.value}".strip(), border_style="cyan")
+               title=f"{r.name.value.upper()} {r.surname.value.upper()}".strip(), border_style="cyan")
          for r in recs],
         equal=True, expand=True))
 
@@ -281,9 +281,18 @@ def show_birthdays(book: AddressBook, matches):
 
 def help_msg(section="contacts"):
     mapping = CONTACT_DESC if section == "contacts" else NOTE_DESC
-    console.print()
+    # console.print()
+    # for cmd, desc in mapping.items():
+    #     console.print(f"[cyan bold]{cmd}[/]  {desc}")
+
+    table = Table(title="\n📘 Команди для роботи з нотатками", header_style="bold blue", style="bold bright_cyan")
+
+    table.add_column("Команда", justify="center", style="bold deep_sky_blue1", no_wrap=True)
+    table.add_column("Опис", justify="center", style="white")
+
     for cmd, desc in mapping.items():
-        console.print(f"[cyan bold]{cmd}[/]  {desc}")
+        table.add_row(f"[green]{cmd}[/green]", desc)
+    console.print(table)
 
 def input_error(fn):
     def wrap(parts, *ctx):
@@ -345,11 +354,11 @@ def handle_contact(parts, ab: AddressBook):
     # add/update
     if cmd == "add":
         if not args:
-            name = prompt_validated("Name*: ", allow_blank=False)
-            surname = prompt_validated("Surname: ")
-            phone = prompt_validated("Phone (10 digits): ", Phone)
-            email = prompt_validated("Email: ", Email)
-            address = prompt_validated("Address: ")
+            name = prompt_validated("Enter name: ", allow_blank=False)
+            surname = prompt_validated("Enter surname: ")
+            phone = prompt_validated("Enter phone (10 digits): ", Phone)
+            email = prompt_validated("Enter email: ", Email)
+            address = prompt_validated("Enter address: ")
         else:
             name, *rest = args
             surname = rest[0] if rest else ""
@@ -507,7 +516,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
 # ────────────────────────────────────────────────────────────────────────────
 def main():
     ab, nb, mode = load_data(), load_notes(), "main"
-    console.print("[bold yellow]Assistant CLI[/] – type 'help' inside a mode for commands.\n")
+    console.print("\nWellcome to [bold yellow]SYTObook[/] – your personal contacts and notes assistant 🤖\n")
 
     if _client is None:
         console.print("[yellow]AI functions disabled (no key.txt).[/]")
@@ -516,7 +525,7 @@ def main():
         try:
             # main menu
             if mode == "main":
-                choice = console.input("Mode [contacts / notes / exit]: ").strip().lower()
+                choice = console.input("\n[bold]Choose a mode > [orchid]contacts[/] | [navajo_white1]notes[/] or exit:[/] ").strip().lower()
                 if choice in ("exit", "close"):
                     save_data(ab); save_notes(nb)
                     console.print(ok("Data saved. Bye!")); break
@@ -529,7 +538,7 @@ def main():
 
             # contacts
             if mode == "contacts":
-                raw = console.input("Contacts> ").strip()
+                raw = console.input("\n[bold italic][orchid]Contacts[/]>>> Command :[/]").strip()
                 if raw in ("exit", "close"):
                     save_data(ab); save_notes(nb); console.print(ok("Data saved. Bye!")); break
                 if raw == "back": mode = "main"; continue
@@ -550,7 +559,7 @@ def main():
 
             # notes
             if mode == "notes":
-                raw = console.input("Notes> ").strip()
+                raw = console.input("\n[italic][navajo_white1]Notes[/]>>> Command :[/]").strip()
                 if raw in ("exit", "close"):
                     save_data(ab); save_notes(nb); console.print(ok("Data saved. Bye!")); break
                 if raw == "back": mode = "main"; continue
