@@ -1,6 +1,3 @@
-###############################################################################
-# Assistant CLI – Rich‑only edition (2025‑07‑18, correct upcoming birthdays)
-###############################################################################
 import re
 import datetime
 import pickle
@@ -13,6 +10,7 @@ from typing import Optional, List, Tuple, Type
 from rich.console import Console
 from rich.columns import Columns
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
@@ -32,7 +30,7 @@ except (ImportError, FileNotFoundError):
 # ────────────────────────────────────────────────────────────────────────────
 CONTACT_DESC = {
     "add":              "add <Name> [Surname] [Phone] [Email] [Address]",
-    "change":           "change <Name> – заменить основной телефон",
+    "change":           "change <Name> – Заменить номер телефона или Email или адрес ",
     "remove-phone":     "remove-phone <Name> <Phone>",
     "phone":            "phone <Name>",
     "delete":           "delete <Name>",
@@ -51,15 +49,14 @@ CONTACT_DESC = {
 }
 
 NOTE_DESC = {
-    "add-note":   "add-note <text>",
-    "list-notes": "list-notes",
-    "add-tag":    "add-tag <idx> <tag1> …",
-    "search-tag": "search-tag <tag>",
-    "search-note":"search-note <phrase>",
-    "back":  "back – главное меню",
-    "exit":  "exit / close – сохранить и выйти",
-    "hello": "hello / help – показать помощь",
-    "help":  "help – то же самое",
+    "add-note":   "add new note",
+    "list-notes": "view all notes",
+    "add-tag":    "add new tags",
+    "search-tag": "find a note by tag",
+    "search-note":"find note by text",
+    "back":  "return to mode selection",
+    "exit | close":  "end assistant work",
+    "hello | help": "output all commands"
 }
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -257,7 +254,15 @@ def prompt_validated(prompt: str, factory: Optional[Type[Field]] = None,
 def _panel_body(rec: Record, extra=""):
     phones = ", ".join(p.value for p in rec.phones) or "—"
     bday = rec.birthday.value.strftime("%d.%m.%Y") if rec.birthday else "—"
-    body = f"[b]📞[/b] {phones}\n[b]📧[/b] {rec.email.value or '—'}\n[b]📍[/b] {rec.address.value or '—'}\n[b]🎂[/b] {bday}"
+    notes_list = getattr(rec, "contact_notes", [])
+    notes = " | ".join(notes_list) if notes_list else "—"
+    body = (
+        f"[b]📞[/b] {phones}\n"
+        f"[b]📧[/b] {rec.email.value or '—'}\n"
+        f"[b]📍[/b] {rec.address.value or '—'}\n"
+        f"[b]🎂[/b] {bday}\n"
+        f"[b]📝[/b] {notes}"
+    )
     return body + (f"\n{extra}" if extra else "")
 
 def show_records(recs: List[Record]):
@@ -266,7 +271,7 @@ def show_records(recs: List[Record]):
         return
     console.print(Columns(
         [Panel(_panel_body(r),
-               title=f"{r.name.value} {r.surname.value}".strip(), border_style="cyan")
+               title=f"{r.name.value.upper()} {r.surname.value.upper()}".strip(), border_style="cyan")
          for r in recs],
         equal=True, expand=True))
 
@@ -284,9 +289,18 @@ def show_birthdays(book: AddressBook, matches):
 
 def help_msg(section="contacts"):
     mapping = CONTACT_DESC if section == "contacts" else NOTE_DESC
-    console.print()
+    # console.print()
+    # for cmd, desc in mapping.items():
+    #     console.print(f"[cyan bold]{cmd}[/]  {desc}")
+
+    table = Table(title="\n📘 Команди для роботи з нотатками", header_style="bold blue", style="bold bright_cyan")
+
+    table.add_column("Команда", justify="center", style="bold deep_sky_blue1", no_wrap=True)
+    table.add_column("Опис", justify="center", style="white")
+
     for cmd, desc in mapping.items():
-        console.print(f"[cyan bold]{cmd}[/]  {desc}")
+        table.add_row(f"[green]{cmd}[/green]", desc)
+    console.print(table)
 
 def input_error(fn):
     def wrap(parts, *ctx):
@@ -302,7 +316,7 @@ def input_error(fn):
 # Argument spec
 # ────────────────────────────────────────────────────────────────────────────
 ARG_SPEC = {
-    "change": 1, "remove-phone": 2, "phone": 1, "delete": 1,
+    "change_": 1, "remove-phone": 2, "phone": 1, "delete": 1,
     "add-birthday": 2, "show-birthday": 1, "add-contact-note": 2,
     "change-address": 2, "change-email": 2, "search": 1, "birthdays": 1,
     # notes
@@ -313,15 +327,12 @@ NOTE_CMDS = list(NOTE_DESC.keys())
 
 def collect_args(cmd):
     prompts = {
-        "change": ["Contact name: ", "New phone (10 digits): "],
         "remove-phone": ["Contact name: ", "Phone: "],
         "phone": ["Contact name: "],
         "delete": ["Contact name: "],
         "add-birthday": ["Contact name: ", "Birthday DD.MM.YYYY: "],
         "show-birthday": ["Name or surname: "],
         "add-contact-note": ["Contact name: ", "Note: "],
-        "change-address": ["Contact name: ", "New address: "],
-        "change-email": ["Contact name: ", "New email: "],
         "search": ["Query: "],
         "birthdays": ["Days from today (N): "],
         # notes
@@ -339,6 +350,9 @@ def collect_args(cmd):
 # ────────────────────────────────────────────────────────────────────────────
 # Handlers
 # ────────────────────────────────────────────────────────────────────────────
+def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+    name_lower = name.strip().lower()
+    return next((key for key in book.data if key.lower() == name_lower), None)
 @input_error
 def handle_contact(parts, ab: AddressBook):
     cmd, *args = parts
@@ -348,11 +362,11 @@ def handle_contact(parts, ab: AddressBook):
     # add/update
     if cmd == "add":
         if not args:
-            name = prompt_validated("Name*: ", allow_blank=False)
-            surname = prompt_validated("Surname: ")
-            phone = prompt_validated("Phone (10 digits): ", Phone)
-            email = prompt_validated("Email: ", Email)
-            address = prompt_validated("Address: ")
+            name = prompt_validated("Enter name: ", allow_blank=False)
+            surname = prompt_validated("Enter surname: ")
+            phone = prompt_validated("Enter phone (10 digits): ", Phone)
+            email = prompt_validated("Enter email: ", Email)
+            address = prompt_validated("Enter address: ")
         else:
             name, *rest = args
             surname = rest[0] if rest else ""
@@ -373,26 +387,33 @@ def handle_contact(parts, ab: AddressBook):
 
     # phone change
     if cmd == "change":
-        if len(args) == 1:
-            name = args[0]
-            new = prompt_validated("New phone (10 digits): ", Phone, allow_blank=False)
+        name_input = input("Which contact do you want to change? >>> ").strip()
+        normalized_name = get_record_key(name_input, ab)
+        if not normalized_name:
+            return "Ooops. Contact not found :-("
+
+        record = ab.data[normalized_name]
+
+        field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
+
+        if field == "phone":
+            new_phone = input("Enter new phone >>> ").strip()
+            record.phones = []
+            record.add_phone(new_phone)
+            return f"Phone updated for {normalized_name.capitalize()}"
+
+        elif field == "email":
+            new_email = input("Enter new email >>> ").strip()
+            record.update_email(new_email)
+            return f"Email updated for {normalized_name.capitalize()}"
+
+        elif field == "address":
+            new_address = input("Enter new address >>> ").strip()
+            record.update_address(new_address)
+            return f"Address updated for {normalized_name.capitalize()}"
+
         else:
-            name, new = args
-        rec = ab.find(name)
-        if not rec.phones:
-            rec.add_phone(new)
-            return ok("Phone added.")
-        if len(rec.phones) == 1:
-            rec.edit_phone(0, new)
-            return ok("Phone updated.")
-        console.print("Multiple phones:")
-        for i, p in enumerate(rec.phones, 1):
-            console.print(f"{i}. {p.value}")
-        idx = int(console.input("Select index to replace: "))
-        if not 1 <= idx <= len(rec.phones):
-            raise ValueError("Invalid index.")
-        rec.edit_phone(idx - 1, new)
-        return ok("Phone updated.")
+            return "Unknown command. Choose from: phone / email / address"
 
     if cmd == "remove-phone":
         name, phone = args
@@ -447,14 +468,6 @@ def handle_contact(parts, ab: AddressBook):
         name, *note = args
         ab.find(name).add_contact_note(" ".join(note))
         return ok("Note added.")
-    if cmd == "change-address":
-        name, *addr = args
-        ab.find(name).update_address(" ".join(addr))
-        return ok("Address updated.")
-    if cmd == "change-email":
-        name, email = args
-        ab.find(name).update_email(email)
-        return ok("Email updated.")
 
     if cmd in ("back", "exit", "close"):
         return "BACK"
@@ -510,7 +523,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
 # ────────────────────────────────────────────────────────────────────────────
 def main():
     ab, nb, mode = load_data(), load_notes(), "main"
-    console.print("[bold yellow]Assistant CLI[/] – type 'help' inside a mode for commands.\n")
+    console.print("\nWellcome to [bold yellow]SYTObook[/] – your personal contacts and notes assistant 🤖\n")
 
     if _client is None:
         console.print("[yellow]AI functions disabled (no key.txt).[/]")
@@ -519,7 +532,7 @@ def main():
         try:
             # main menu
             if mode == "main":
-                choice = console.input("Mode [contacts / notes / exit]: ").strip().lower()
+                choice = console.input("\n[bold]Choose a mode > [orchid]contacts[/] | [navajo_white1]notes[/] or exit:[/] ").strip().lower()
                 if choice in ("exit", "close"):
                     save_data(ab); save_notes(nb)
                     console.print(ok("Data saved. Bye!")); break
@@ -532,7 +545,7 @@ def main():
 
             # contacts
             if mode == "contacts":
-                raw = console.input("Contacts> ").strip()
+                raw = console.input("\n[bold italic][orchid]Contacts[/]>>> Command :[/]").strip()
                 if raw in ("exit", "close"):
                     save_data(ab); save_notes(nb); console.print(ok("Data saved. Bye!")); break
                 if raw == "back": mode = "main"; continue
@@ -553,7 +566,7 @@ def main():
 
             # notes
             if mode == "notes":
-                raw = console.input("Notes> ").strip()
+                raw = console.input("\n[italic][navajo_white1]Notes[/]>>> Command :[/]").strip()
                 if raw in ("exit", "close"):
                     save_data(ab); save_notes(nb); console.print(ok("Data saved. Bye!")); break
                 if raw == "back": mode = "main"; continue
