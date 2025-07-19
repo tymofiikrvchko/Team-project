@@ -30,7 +30,7 @@ except (ImportError, FileNotFoundError):
 # ────────────────────────────────────────────────────────────────────────────
 CONTACT_DESC = {
     "add":              "add <Name> [Surname] [Phone] [Email] [Address]",
-    "change":           "change <Name> – заменить основной телефон",
+    "change":           "change <Name> – Заменить номер телефона или Email или адрес ",
     "remove-phone":     "remove-phone <Name> <Phone>",
     "phone":            "phone <Name>",
     "delete":           "delete <Name>",
@@ -254,7 +254,15 @@ def prompt_validated(prompt: str, factory: Optional[Type[Field]] = None,
 def _panel_body(rec: Record, extra=""):
     phones = ", ".join(p.value for p in rec.phones) or "—"
     bday = rec.birthday.value.strftime("%d.%m.%Y") if rec.birthday else "—"
-    body = f"[b]📞[/b] {phones}\n[b]📧[/b] {rec.email.value or '—'}\n[b]📍[/b] {rec.address.value or '—'}\n[b]🎂[/b] {bday}"
+    notes_list = getattr(rec, "contact_notes", [])
+    notes = " | ".join(notes_list) if notes_list else "—"
+    body = (
+        f"[b]📞[/b] {phones}\n"
+        f"[b]📧[/b] {rec.email.value or '—'}\n"
+        f"[b]📍[/b] {rec.address.value or '—'}\n"
+        f"[b]🎂[/b] {bday}\n"
+        f"[b]📝[/b] {notes}"
+    )
     return body + (f"\n{extra}" if extra else "")
 
 def show_records(recs: List[Record]):
@@ -308,7 +316,7 @@ def input_error(fn):
 # Argument spec
 # ────────────────────────────────────────────────────────────────────────────
 ARG_SPEC = {
-    "change": 1, "remove-phone": 2, "phone": 1, "delete": 1,
+    "change_": 1, "remove-phone": 2, "phone": 1, "delete": 1,
     "add-birthday": 2, "show-birthday": 1, "add-contact-note": 2,
     "change-address": 2, "change-email": 2, "search": 1, "birthdays": 1,
     # notes
@@ -319,15 +327,12 @@ NOTE_CMDS = list(NOTE_DESC.keys())
 
 def collect_args(cmd):
     prompts = {
-        "change": ["Contact name: ", "New phone (10 digits): "],
         "remove-phone": ["Contact name: ", "Phone: "],
         "phone": ["Contact name: "],
         "delete": ["Contact name: "],
         "add-birthday": ["Contact name: ", "Birthday DD.MM.YYYY: "],
         "show-birthday": ["Name or surname: "],
         "add-contact-note": ["Contact name: ", "Note: "],
-        "change-address": ["Contact name: ", "New address: "],
-        "change-email": ["Contact name: ", "New email: "],
         "search": ["Query: "],
         "birthdays": ["Days from today (N): "],
         # notes
@@ -345,6 +350,9 @@ def collect_args(cmd):
 # ────────────────────────────────────────────────────────────────────────────
 # Handlers
 # ────────────────────────────────────────────────────────────────────────────
+def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+    name_lower = name.strip().lower()
+    return next((key for key in book.data if key.lower() == name_lower), None)
 @input_error
 def handle_contact(parts, ab: AddressBook):
     cmd, *args = parts
@@ -379,26 +387,33 @@ def handle_contact(parts, ab: AddressBook):
 
     # phone change
     if cmd == "change":
-        if len(args) == 1:
-            name = args[0]
-            new = prompt_validated("New phone (10 digits): ", Phone, allow_blank=False)
+        name_input = input("Which contact do you want to change? >>> ").strip()
+        normalized_name = get_record_key(name_input, ab)
+        if not normalized_name:
+            return "Ooops. Contact not found :-("
+
+        record = ab.data[normalized_name]
+
+        field = input("What do you want to change in this contact? (phone / email / address) >>> ").strip().lower()
+
+        if field == "phone":
+            new_phone = input("Enter new phone >>> ").strip()
+            record.phones = []
+            record.add_phone(new_phone)
+            return f"Phone updated for {normalized_name.capitalize()}"
+
+        elif field == "email":
+            new_email = input("Enter new email >>> ").strip()
+            record.update_email(new_email)
+            return f"Email updated for {normalized_name.capitalize()}"
+
+        elif field == "address":
+            new_address = input("Enter new address >>> ").strip()
+            record.update_address(new_address)
+            return f"Address updated for {normalized_name.capitalize()}"
+
         else:
-            name, new = args
-        rec = ab.find(name)
-        if not rec.phones:
-            rec.add_phone(new)
-            return ok("Phone added.")
-        if len(rec.phones) == 1:
-            rec.edit_phone(0, new)
-            return ok("Phone updated.")
-        console.print("Multiple phones:")
-        for i, p in enumerate(rec.phones, 1):
-            console.print(f"{i}. {p.value}")
-        idx = int(console.input("Select index to replace: "))
-        if not 1 <= idx <= len(rec.phones):
-            raise ValueError("Invalid index.")
-        rec.edit_phone(idx - 1, new)
-        return ok("Phone updated.")
+            return "Unknown command. Choose from: phone / email / address"
 
     if cmd == "remove-phone":
         name, phone = args
@@ -453,14 +468,6 @@ def handle_contact(parts, ab: AddressBook):
         name, *note = args
         ab.find(name).add_contact_note(" ".join(note))
         return ok("Note added.")
-    if cmd == "change-address":
-        name, *addr = args
-        ab.find(name).update_address(" ".join(addr))
-        return ok("Address updated.")
-    if cmd == "change-email":
-        name, email = args
-        ab.find(name).update_email(email)
-        return ok("Email updated.")
 
     if cmd in ("back", "exit", "close"):
         return "BACK"
