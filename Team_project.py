@@ -35,37 +35,31 @@ except (ImportError, FileNotFoundError):
 # Command dictionaries – кратко; полный список по команде help внутри режима
 # ────────────────────────────────────────────────────────────────────────────
 CONTACT_DESC = {
-    "add": "add <Name> [Surname] [Phone] [Email] [Address]",
-    "change": "change <Name> – Заменить номер телефона или Email или адрес ",
-    "remove-phone": "remove-phone <Name> <Phone>",
-    "phone": "phone <Name>",
+    "add": "add new contact",
+    "change": "change contact name or phone or email or notes",
+    "remove-phone": "remove contact`s phone",
     "delete": "delete <Name>",
-    "all": "all – показать все контакты",
-    "search": "search <query> – имя/фамилия/телефон/заметки",
-    "add-birthday": "add-birthday <Name> <DD.MM.YYYY>",
-    "show-birthday": "show-birthday <Name|Surname>",
-    "birthdays": "birthdays <N> – ближайшие N дней",
-    "add-contact-note": "add-contact-note <Name> <Text>",
-    "change-address": "change-address <Name> <New address>",
-    "change-email": "change-email <Name> <New email>",
-    "back": "back – главное меню",
-    "exit": "exit / close – сохранить и выйти",
-    "hello": "hello / help – показать помощь",
-    "help": "help – то же самое",
+    "all": "show all contacts",
+    "search": "search contact by name or phone or email or notes",
+    "add-birthday": "add birthday to contact",
+    "show-birthday": "show contact`s birthday",
+    "birthdays": "show all contacts whose birthday is in the next N days",
+    "add-contact-note": "add note to contact",
+    "back":  "return to mode selection",
+    "exit | close":  "end assistant work",
+    "hello | help": "output all commands"
 }
 
 NOTE_DESC = {
-    "group-notes": "group-notes [tag] – вывести заметки, сгруппированные по тегам",
-    "add-note": "add new note",
+    "add-note":   "add new note",
     "list-notes": "view all notes",
-    "add-tag": "add new tags",
+    "add-tag":    "add new tags",
     "search-tag": "find a note by tag",
-    "search-note": "find note by text",
-    "back": "return to mode selection",
-    "exit": "end assistant work",
-    "close": "end assistant work",
-    "hello": "output all commands",
-    "help": "output all commands"
+    "search-note":"find note by text",
+    "group-notes": "find notes grouped by tags",
+    "back":  "return to mode selection",
+    "exit | close":  "end assistant work",
+    "hello | help": "output all commands"
 }
 
 
@@ -373,7 +367,7 @@ def _panel_body(rec: Record, extra=""):
 
 def show_records(recs: List[Record]):
     if not recs:
-        console.print("[dim]No contacts.[/]")
+        console.print("[dim italic]No contacts.[/]")
         return
     console.print(Columns(
         [Panel(_panel_body(r),
@@ -384,7 +378,7 @@ def show_records(recs: List[Record]):
 
 def show_birthdays(book: AddressBook, matches):
     if not matches:
-        console.print("🎉 No birthdays in this period.")
+        console.print("[dim italic]No birthdays in this period.[/]\n")
         return
 
     ordered = sorted(matches.items(), key=lambda x: x[1][0])
@@ -396,7 +390,7 @@ def show_birthdays(book: AddressBook, matches):
         panels.append(
             Panel(
                 _panel_body(rec,
-                            extra=f"🎂 {dt.strftime('%d.%m.%Y')} / {age} y"),
+                            extra=f"🎉 {dt.strftime('%d.%m.%Y')} / {age} years"),
                 title=full_name,
                 border_style="magenta"
             )
@@ -434,9 +428,9 @@ def input_error(fn):
     return wrap
 
 def register(users):
-    print("===== New User Registration =====")
+    console.print("[bold yellow]===== New User Registration =====[/]")
     while True:
-        username = input("Enter your name >>> ").strip()
+        username = input("Enter your login >>> ").strip()
         if username in users:
             print(f"User {username} already registered.")
         else:
@@ -446,13 +440,13 @@ def register(users):
     save_users(users)
     return username
 def login(users):
-    print("===== Login =====")
+    console.print("[bold blue]===== Login =====[/]")
     username = input("Login >>> ").strip()
     password = input("Password >>> ").strip()
     if users.get(username) == password:
         return username
     else:
-        print(f"Invalid credentials. Check you login or password.")
+        console.print(f"[dim italic]Invalid credentials. Check you login or password.[/]\n")
         return None
 # ────────────────────────────────────────────────────────────────────────────
 # Argument spec
@@ -476,7 +470,7 @@ def collect_args(cmd):
         "add-birthday": ["Contact name: ", "Birthday DD.MM.YYYY: "],
         "show-birthday": ["Name or surname: "],
         "add-contact-note": ["Contact name: ", "Note: "],
-        "search": ["Query: "],
+        "search": ["Enter name | surname | phone | notes: "],
         "birthdays": ["Days from today (N): "],
         # notes
         "add-tag": ["Note index: ", "Tags (comma): "],
@@ -586,7 +580,7 @@ def handle_contact(parts, ab: AddressBook):
             return f"Address updated for {normalized_name.capitalize()}"
 
         else:
-            return "Unknown command. Choose from: phone / email / address"
+            return "[dim italic]Unknown command. Choose from: phone / email / address[/]\n"
 
     if cmd == "remove-phone":
         name, phone = args
@@ -631,7 +625,7 @@ def handle_contact(parts, ab: AddressBook):
     if cmd == "birthdays":
         days, = args
         if not days.isdigit():
-            raise ValueError("Enter non‑negative integer.")
+            raise ValueError("Enter a positive integer for the number of days")
         matches = ab.upcoming(int(days))
         show_birthdays(ab, matches)
         return ""
@@ -660,12 +654,12 @@ def handle_notes(parts, nb: GeneralNoteBook):
             groups = {tag_filter: groups.get(tag_filter, [])}
 
         if not groups or all(not lst for lst in groups.values()):
-            return f"[dim]No notes with tag '{tag_filter}'.[/]" if tag_filter else "[dim]No notes.[/]"
+            return f"[dim italic]No notes with tag '{tag_filter}'.[/]" if tag_filter else "[dim italic]No notes.[/]\n"
 
         for tag, lst in groups.items():
             console.print(f"\n[bold blue]🏷️  {tag.upper()}[/] ({len(lst)})")
             for i, n in enumerate(lst, 1):
-                console.print(f"  {i}. {n.text}  [dim]{n.created_at}[/]")
+                console.print(f"  {i}. {n.text}  [dim italic]{n.created_at}[/]")
         return ""
     if cmd == "add-note":
         text = " ".join(args) if args else console.input("Text: ")
@@ -679,7 +673,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
     if cmd == "list-notes":
         notes = nb.list_notes()
         if not notes:
-            console.print("[dim]No notes.[/]")
+            console.print("[dim italic]No notes.[/]")
             return ""
 
         table = Table(show_header=True, header_style="bold blue",
@@ -707,7 +701,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
         return ""
     if cmd == "search-note":
         if not nb.notes:
-            return "[dim]No notes to search.[/]"
+            return "[dim italic]No notes to search.[/]"
         query = " ".join(args) if args else console.input("Query: ")
 
         # ---------- 1) быстрый keyword‑фильтр ----------
@@ -739,7 +733,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
         )
         idxs = [int(x) for x in re.findall(r"\d+", resp.choices[0].message.content)]
         if not idxs:
-            console.print("[dim]No semantic matches.[/]")
+            console.print("[dim italic]No semantic matches.[/]")
             return ""
         console.print("[magenta]Semantic match:[/]")
         console.print("\n".join(f"{i}. {nb.notes[i - 1]}" for i in idxs))
@@ -751,7 +745,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
 # ────────────────────────────────────────────────────────────────────────────
 def main():
     users = load_users()
-    console.print("\n[bold]Wellcome to [yellow]SYTObook[/] – your personal contacts and notes assistant[/] 🤖\n")
+    console.print("\n[bold blue]Wellcome to [yellow]SYTObook[/] – your personal contacts and notes assistant[/] 🤖\n")
 
     while True:
         choice = input("Do you want to (l)ogin or (r)egister? >>> ").strip()
@@ -762,10 +756,13 @@ def main():
             username = login(users)
             if username:
                 break
+        elif choice == "exit":
+            console.print("[dim italic]We are very sorry that you are leaving us. Bye![/]\n")
+            exit(0)
         else:
-            print("Incalid input. Please enter 'l' for login or 'r' for register." )
+            console.print("[dim italic]Incalid input. Please enter 'l' for login or 'r' for register.[/]\n" )
 
-    console.print(f"\n[bold]Hello, {username.capitalize()}, glad to see you![/]")
+    console.print(f"\n[bold]Hello, [blue]{username.capitalize()}[/], glad to see you![/]")
     ab = load_data(username)
     nb = load_notes(username)
     mode = "main"
@@ -782,7 +779,7 @@ def main():
                 if choice in ("exit", "close"):
                     save_data(username, ab)
                     save_notes(username, nb)
-                    console.print(ok("Data saved. Bye!"));
+                    console.print(ok("Data saved. Bye!"))
                     break
                 if choice in ("contacts", "notes"):
                     mode = choice
@@ -793,7 +790,7 @@ def main():
 
             # contacts
             if mode == "contacts":
-                raw = console.input("\n[bold italic][orchid]Contacts[/]>>> Command :[/]").strip()
+                raw = console.input("\n[bold italic][orchid]Contacts[/]>>> Command: [/]").strip()
                 if raw in ("exit", "close"):
                     save_data(username, ab)
                     save_notes(username, nb)
@@ -808,7 +805,7 @@ def main():
                     if sug and console.input(f"Did you mean '{sug}'? (y/n): ").lower().startswith("y"):
                         parts = [sug] + collect_args(sug)
                     else:
-                        console.print("Unknown command.");
+                        console.print("[dim italic]Unknown command.[/]\n");
                         continue
                 need = ARG_SPEC.get(parts[0], 0)
                 if len(parts) - 1 < need: parts += collect_args(parts[0])
@@ -820,7 +817,7 @@ def main():
 
             # notes
             if mode == "notes":
-                raw = console.input("\n[italic][navajo_white1]Notes[/]>>> Command :[/]").strip()
+                raw = console.input("\n[italic][navajo_white1]Notes[/]>>> Command: [/]").strip()
                 if raw in ("exit", "close"):
                     save_data(username, ab)
                     save_notes(username, nb)
@@ -835,7 +832,7 @@ def main():
                     if sug and console.input(f"Did you mean '{sug}'? (y/n): ").lower().startswith("y"):
                         parts = [sug] + collect_args(sug)
                     else:
-                        console.print("Unknown command.");
+                        console.print("[dim italic]Unknown command.[/]\n");
                         continue
                 need = ARG_SPEC.get(parts[0], 0)
                 if len(parts) - 1 < need: parts += collect_args(parts[0])
