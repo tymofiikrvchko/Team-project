@@ -55,6 +55,7 @@ CONTACT_DESC = {
 }
 
 NOTE_DESC = {
+    "group-notes": "group-notes [tag] – вывести заметки, сгруппированные по тегам",
     "add-note": "add new note",
     "list-notes": "view all notes",
     "add-tag": "add new tags",
@@ -201,32 +202,30 @@ class AddressBook(UserDict):
     def delete(self, name: str):
         del self.data[make_key_from_input(name)]
 
-    def upcoming(self, days_ahead: int) -> dict[str, Tuple[datetime.date, int]]:
-        """
-        Вернуть {name: (next_date, age_turning)} для контактов,
-        у которых ближайший ДР в интервале [0, days_ahead] от сегодня.
-        """
-        today = datetime.date.today()
-        result: dict[str, Tuple[datetime.date, int]] = {}
+    def upcoming(self, days_ahead: int) -> dict[str, tuple[datetime.date, int]]:
 
-        for rec in self.data.values():
+        today = datetime.date.today()
+        result = {}
+
+        for key, rec in self.data.items():
             if not rec.birthday:
                 continue
+
             month, day = rec.birthday.value.month, rec.birthday.value.day
             year = today.year
-            # ближайшая дата ДР
             try:
                 next_bd = datetime.date(year, month, day)
-            except ValueError:  # 29 фев на невисокосный
+            except ValueError:
                 next_bd = datetime.date(year, 2, 28)
-            if next_bd < today:  # уже прошёл – берём след. год
+            if next_bd < today:
                 try:
                     next_bd = datetime.date(year + 1, month, day)
                 except ValueError:
                     next_bd = datetime.date(year + 1, 2, 28)
+
             delta = (next_bd - today).days
             if 0 <= delta <= days_ahead:
-                result[rec.name.value] = (next_bd, next_bd.year - rec.birthday.value.year)
+                result[key] = (next_bd, next_bd.year - rec.birthday.value.year)
 
         return result
 
@@ -253,6 +252,16 @@ class GeneralNoteBook:
     def list_notes(self): return self.notes
 
     def search_by_tag(self, tag: str): return [n for n in self.notes if tag in n.tags]
+def group_notes_by_tag(notes: list["GeneralNote"]) -> dict[str, list["GeneralNote"]]:
+    from collections import defaultdict
+    groups: dict[str, list[GeneralNote]] = defaultdict(list)
+    for n in notes:
+        if n.tags:
+            for t in n.tags:
+                groups[t.lower()].append(n)
+        else:
+            groups["—"].append(n)
+    return dict(sorted(groups.items()))
 
 # ────────────────────────────────────────────────────────────────────────────
 # user‑scoped storage
@@ -382,7 +391,7 @@ def show_birthdays(book: AddressBook, matches):
     panels = []
 
     for key, (dt, age) in ordered:
-        rec = book.find(key)
+        rec = book.data[key]
         full_name = f"{rec.name.value.title()} {rec.surname.value.title()}".strip()
         panels.append(
             Panel(
@@ -453,7 +462,7 @@ ARG_SPEC = {
     "add-birthday": 2, "show-birthday": 1, "add-contact-note": 2,
     "change-address": 2, "change-email": 2, "search": 1, "birthdays": 1,
     # notes
-    "add-tag": 2, "search-tag": 1, "search-note": 1,
+    "add-tag": 2, "search-tag": 1, "search-note": 1, "group-notes": 0
 }
 CONTACT_CMDS = list(CONTACT_DESC.keys())
 NOTE_CMDS = list(NOTE_DESC.keys())
@@ -643,6 +652,21 @@ def handle_notes(parts, nb: GeneralNoteBook):
     cmd, *args = parts
     if cmd in ("hello", "help"):
         return help_msg("notes")
+    if cmd == "group-notes":
+        tag_filter = args[0].lower() if args else None
+
+        groups = group_notes_by_tag(nb.notes)
+        if tag_filter:
+            groups = {tag_filter: groups.get(tag_filter, [])}
+
+        if not groups or all(not lst for lst in groups.values()):
+            return f"[dim]No notes with tag '{tag_filter}'.[/]" if tag_filter else "[dim]No notes.[/]"
+
+        for tag, lst in groups.items():
+            console.print(f"\n[bold blue]🏷️  {tag.upper()}[/] ({len(lst)})")
+            for i, n in enumerate(lst, 1):
+                console.print(f"  {i}. {n.text}  [dim]{n.created_at}[/]")
+        return ""
     if cmd == "add-note":
         text = " ".join(args) if args else console.input("Text: ")
         if not text.strip():
