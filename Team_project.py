@@ -141,8 +141,8 @@ class Record:
     def __init__(self, name: str, surname: str = "", address: str = "", email: str = ""):
         self.name = Name(name)
         self.surname = Surname(surname)
-        self.address = Address(address)
-        self.email = Email(email)
+        self.address = address if isinstance(address, Address) else Address(address)
+        self.email = email if isinstance(email, Email) else Email(email)
         self.phones: List[Phone] = []
         self.birthday: Optional[Birthday] = None
         self.contact_notes: List[str] = []
@@ -166,9 +166,18 @@ class Record:
 
 
 class AddressBook(UserDict):
-    def add_record(self, rec: Record): self.data[rec.name.value.lower()] = rec
-    def find(self, name: str) -> Record: return self.data[name.lower()]
-    def delete(self, name: str): del self.data[name.lower()]
+    def add_record(self, rec: Record): 
+        key = make_key(rec.name.value, rec.surname.value)
+        self.data[key] = rec
+
+    def find(self, name: str) -> Record: 
+        key = get_record_key(name, self)
+        if key is None:
+            raise KeyError("Contact not found.")
+        return self.data[key]
+    
+    def delete(self, name: str): 
+        del self.data[make_key_from_input(name)]
 
     # --- главное: ближайшие ДР ---
     def upcoming(self, days_ahead: int) -> dict[str, Tuple[datetime.date, int]]:
@@ -395,9 +404,35 @@ def collect_args(cmd):
 # ────────────────────────────────────────────────────────────────────────────
 # Handlers
 # ────────────────────────────────────────────────────────────────────────────
+def make_key(name: str, surname: str = "") -> str:
+    return f"{name} {surname}".strip().lower()
+
+def make_key_from_input(fullname: str) -> str:
+    parts = fullname.strip().split(maxsplit=1)
+    return make_key(*parts)
+
 def get_record_key(name: str, book: AddressBook) -> Optional[str]:
-    name_lower = name.strip().lower()
-    return next((key for key in book.data if key.lower() == name_lower), None)
+    name_parts = name.strip().split(maxsplit=1)
+    if not name_parts:
+        return None
+
+    key = make_key_from_input(name)
+    if key in book.data:
+        return key
+
+    # Partial match fallback
+    matches = [k for k in book.data if all(part.lower() in k for part in name_parts)]
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        console.print("[yellow]Multiple matches found:[/]")
+        for i, k in enumerate(matches, 1):
+            console.print(f"{i}. {k.title()}")
+        idx = console.input("Select number >>> ").strip()
+        if idx.isdigit() and 1 <= int(idx) <= len(matches):
+            return matches[int(idx) - 1]
+    return None
+
 @input_error
 def handle_contact(parts, ab: AddressBook):
     cmd, *args = parts
@@ -418,21 +453,23 @@ def handle_contact(parts, ab: AddressBook):
             phone = rest[1] if len(rest) > 1 else ""
             email = rest[2] if len(rest) > 2 else ""
             address = " ".join(rest[3:]) if len(rest) > 3 else ""
-        rec = ab.data.get(name.lower())
+        key=make_key(name, surname)
+        rec = ab.data.get(key)
         if rec:
             if phone: rec.add_phone(phone)
             if surname: rec.surname = Surname(surname)
             if email: rec.email = Email(email)
             if address: rec.address = Address(address)
             return ok("Contact updated.")
-        rec = Record(name, surname, address, email)
+        rec = Record(name, surname, Address(address) if address else "", Email(email) if email else "")
         if phone: rec.add_phone(phone)
-        ab.add_record(rec)
+        ab.data[key] = rec
         return ok("Contact added.")
 
     # phone change
     if cmd == "change":
         name_input = input("Which contact do you want to change? >>> ").strip()
+        print("DEBUG:", list(ab.data.keys()))
         normalized_name = get_record_key(name_input, ab)
         if not normalized_name:
             return "Ooops. Contact not found :-("
