@@ -727,7 +727,7 @@ def handle_notes(parts, nb: GeneralNoteBook):
 # ────────────────────────────────────────────────────────────────────────────
 def main():
     users = load_users()
-    print("Welcome to the assistant bot!")
+    console.print("\n[bold]Wellcome to [yellow]SYTObook[/] – your personal contacts and notes assistant[/] 🤖\n")
 
     while True:
         choice = input("Do you want to (l)ogin or (r)egister? >>> ").strip()
@@ -741,11 +741,10 @@ def main():
         else:
             print("Incalid input. Please enter 'l' for login or 'r' for register." )
 
-    print(f"Hello, {username.capitalize()}, glad to see you again!")
+    console.print(f"\n[bold]Hello, {username.capitalize()}, glad to see you![/]")
     ab = load_data(username)
     nb = load_notes(username)
     mode = "main"
-    console.print("\nWellcome to [bold yellow]SYTObook[/] – your personal contacts and notes assistant 🤖\n")
 
     if _client is None:
         console.print("[yellow]AI functions disabled (no key.txt).[/]")
