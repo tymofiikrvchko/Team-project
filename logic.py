@@ -1,15 +1,13 @@
-# import datetime
 import re
-# from collections import UserDict
-from typing import Optional, List, Type #Tuple
+from typing import Optional, List, Type
 from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 import getpass
-from main import _client
-from models import GeneralNote, Field, Record, AddressBook
-from storage import *
+from openai_file import _client
+from models import Field, Record, AddressBook
+from notes import GeneralNote
 from storage import save_users
 
 console = Console()
@@ -190,6 +188,7 @@ def register(users):
     users[username] = password
     save_users(users)
     return username
+
 def login(users):
     console.print("[bold blue]===== Login =====[/]")
     username = input("Login >>> ").strip()

@@ -1,9 +1,10 @@
 from rich.console import Console
-from typing import Optional
-from models import GeneralNote, Field, Record, AddressBook, group_notes_by_tag
 from logic import *
 from logic import input_error, help_msg, simple_match 
 from main import _client
+from models import Record, AddressBook, get_record_key
+from notes import GeneralNoteBook
+from utils import make_key
 
 console = Console()
 
@@ -18,32 +19,31 @@ User will send a search query in Russian, Ukrainian or English.
 Return ONLY the indices (space‑separated) of up to five notes
 that are truly relevant. If nothing fits, return an empty string.
 """
-
-def make_key(name: str, surname: str = "") -> str:
-    return f"{name} {surname}".strip().lower()
-
-
-def make_key_from_input(fullname: str) -> str:
-    parts = fullname.strip().split(maxsplit=1)
-    return make_key(*parts)
+# переніс в utils
+# def make_key(name: str, surname: str = "") -> str:
+#     return f"{name} {surname}".strip().lower()
 
 
-def get_record_key(name: str, book: AddressBook) -> Optional[str]:
-    name_parts = name.strip().split(maxsplit=1)
-    if not name_parts:
-        return None
+# def make_key_from_input(fullname: str) -> str:
+#     parts = fullname.strip().split(maxsplit=1)
+#     return make_key(*parts)
 
-    matches = [k for k in book.data if all(part.lower() in k for part in name_parts)]
-    if len(matches) == 1:
-        return matches[0]
-    elif len(matches) > 1:
-        console.print("[yellow]Multiple matches found:[/]")
-        for i, k in enumerate(matches, 1):
-            console.print(f"{i}. {k.title()}")
-        idx = console.input("Select number >>> ").strip()
-        if idx.isdigit() and 1 <= int(idx) <= len(matches):
-            return matches[int(idx) - 1]
-    return None
+# def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+#     name_parts = name.strip().split(maxsplit=1)
+#     if not name_parts:
+#         return None
+
+#     matches = [k for k in book.data if all(part.lower() in k for part in name_parts)]
+#     if len(matches) == 1:
+#         return matches[0]
+#     elif len(matches) > 1:
+#         console.print("[yellow]Multiple matches found:[/]")
+#         for i, k in enumerate(matches, 1):
+#             console.print(f"{i}. {k.title()}")
+#         idx = console.input("Select number >>> ").strip()
+#         if idx.isdigit() and 1 <= int(idx) <= len(matches):
+#             return matches[int(idx) - 1]
+#     return None
 
 
 @input_error

@@ -1,9 +1,8 @@
 import datetime
 import re
-from typing import Optional, List, Tuple, Type
+from typing import Optional, List
 from collections import UserDict
-from handlers import *
-from handlers import get_record_key, make_key, make_key_from_input
+from utils import make_key, make_key_from_input
 
 
 
@@ -127,37 +126,23 @@ class AddressBook(UserDict):
 
         return result
 
+def get_record_key(name: str, book: AddressBook) -> Optional[str]:
+    name_parts = name.strip().split(maxsplit=1)
+    if not name_parts:
+        return None
+
+    matches = [k for k in book.data if all(part.lower() in k for part in name_parts)]
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        console.print("[yellow]Multiple matches found:[/]")
+        for i, k in enumerate(matches, 1):
+            console.print(f"{i}. {k.title()}")
+        idx = console.input("Select number >>> ").strip()
+        if idx.isdigit() and 1 <= int(idx) <= len(matches):
+            return matches[int(idx) - 1]
+    return None
 
 # ────────────────────────────────────────────────────────────────────────────
-# Notes
+# Notes moved to notes.py
 # ────────────────────────────────────────────────────────────────────────────
-class GeneralNote:
-    def __init__(self, text: str, tags: List[str]):
-        self.text = text.strip()
-        self.tags = tags
-        self.created_at = datetime.date.today()
-
-    def __str__(self):
-        tags = ", ".join(self.tags) if self.tags else "—"
-        return f"{self.created_at.isoformat()}   [{tags}]   {self.text}"
-
-
-class GeneralNoteBook:
-    def __init__(self): self.notes: List[GeneralNote] = []
-
-    def add_note(self, text: str, tags: List[str]): self.notes.append(GeneralNote(text, tags))
-
-    def list_notes(self): return self.notes
-
-    def search_by_tag(self, tag: str): return [n for n in self.notes if tag in n.tags]
-
-def group_notes_by_tag(notes: list["GeneralNote"]) -> dict[str, list["GeneralNote"]]:
-    from collections import defaultdict
-    groups: dict[str, list[GeneralNote]] = defaultdict(list)
-    for n in notes:
-        if n.tags:
-            for t in n.tags:
-                groups[t.lower()].append(n)
-        else:
-            groups["—"].append(n)
-    return dict(sorted(groups.items()))

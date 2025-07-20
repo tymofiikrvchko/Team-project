@@ -2,6 +2,7 @@ import os
 import pickle
 from logic import *
 from models import *
+from notes import GeneralNoteBook
 
 
 # ────────────────────────────────────────────────────────────────────────────
