@@ -277,12 +277,12 @@ def show_records(recs: List[Record]):
 
 def show_birthdays(book: AddressBook, matches):
     if not matches:
-        console.print("🎉 No birthdays in this period.")
+        console.print("[dim]No birthdays in this period.[/]")
         return
     ordered = sorted(matches.items(), key=lambda x: (x[1][0]))
     console.print(Columns([
         Panel(_panel_body(book.find(name),
-                          extra=f"🎂 {dt.strftime('%d.%m.%Y')} / {age} y"),
+                          extra=f"🎉 {dt.strftime('%d.%m.%Y')} / {age} years"),
               title=name, border_style="magenta")
         for name, (dt, age) in ordered],
         equal=True, expand=True))
@@ -458,7 +458,7 @@ def handle_contact(parts, ab: AddressBook):
     if cmd == "birthdays":
         days, = args
         if not days.isdigit():
-            raise ValueError("Enter non‑negative integer.")
+            raise ValueError("Enter a positive integer for the number of days")
         matches = ab.upcoming(int(days))
         show_birthdays(ab, matches)
         return ""
