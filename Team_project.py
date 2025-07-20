@@ -61,8 +61,10 @@ NOTE_DESC = {
     "search-tag": "find a note by tag",
     "search-note": "find note by text",
     "back": "return to mode selection",
-    "exit | close": "end assistant work",
-    "hello | help": "output all commands"
+    "exit": "end assistant work",
+    "close": "end assistant work",
+    "hello": "output all commands",
+    "help": "output all commands"
 }
 
 
@@ -380,7 +382,7 @@ def show_birthdays(book: AddressBook, matches):
     panels = []
 
     for key, (dt, age) in ordered:
-        rec = book.find(key)                       
+        rec = book.find(key)
         full_name = f"{rec.name.value.title()} {rec.surname.value.title()}".strip()
         panels.append(
             Panel(
