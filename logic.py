@@ -65,7 +65,8 @@ CONTACT_DESC = {
     "add-contact-note": "add note to contact",
     "back":  "return to mode selection",
     "exit | close":  "end assistant work",
-    "hello | help": "output all commands"
+    "hello": "output all commands",
+    "help": "output all commands"
 }
 
 NOTE_DESC = {
@@ -77,7 +78,8 @@ NOTE_DESC = {
     "group-notes": "find notes grouped by tags",
     "back":  "return to mode selection",
     "exit | close":  "end assistant work",
-    "hello | help": "output all commands"
+    "hello": "output all commands",
+    "help": "output all commands"
 }
 
 # ────────────────────────────────────────────────────────────────────────────
