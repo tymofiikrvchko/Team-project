@@ -3,6 +3,8 @@ import datetime
 import pickle
 from collections import UserDict
 from typing import Optional, List, Tuple, Type
+import getpass
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Rich console
@@ -231,6 +233,22 @@ def load_notes(): return _load(NOTES_FILE, GeneralNoteBook)
 def save_data(ab):  _save(ab, DATA_FILE)
 def save_notes(nb): _save(nb, NOTES_FILE)
 
+# ----------  USERS PERSISTENCE  ----------
+USERS_FILE = "users.pkl"
+
+
+def load_users():
+    try:
+        with open(USERS_FILE, "rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, pickle.PickleError):
+        return {}
+
+
+def save_users(users):
+    with open(USERS_FILE, "wb") as f:
+        pickle.dump(users, f)
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Utility helpers
@@ -277,12 +295,12 @@ def show_records(recs: List[Record]):
 
 def show_birthdays(book: AddressBook, matches):
     if not matches:
-        console.print("[dim]No birthdays in this period.[/]")
+        console.print("🎉 No birthdays in this period.")
         return
     ordered = sorted(matches.items(), key=lambda x: (x[1][0]))
     console.print(Columns([
         Panel(_panel_body(book.find(name),
-                          extra=f"🎉 {dt.strftime('%d.%m.%Y')} / {age} years"),
+                          extra=f"🎂 {dt.strftime('%d.%m.%Y')} / {age} y"),
               title=name, border_style="magenta")
         for name, (dt, age) in ordered],
         equal=True, expand=True))
@@ -310,6 +328,33 @@ def input_error(fn):
         except ValueError as e:
             return f"[red]{e}[/]"
     return wrap
+  
+# ────────────────────────────────────────────────────────────────────────────
+# registration / login
+# ────────────────────────────────────────────────────────────────────────────
+def register(users):
+    print("===== New User Registration =====")
+    while True:
+        username = input("Enter your name >>> ").strip()
+        if username in users:
+            print(f"User {username} already registered.")
+        else:
+            break
+    password = getpass.getpass("Enter a password >>> ").strip()
+    users[username] = password
+    save_users(users)
+    return username
+
+
+def login(users):
+    print("===== Login =====")
+    username = input("Login >>> ").strip()
+    password = input("Password >>> ").strip()
+    if users.get(username) == password:
+        return username
+    else:
+        print(f"Invalid credentials. Check you login or password.")
+        return None
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -458,7 +503,7 @@ def handle_contact(parts, ab: AddressBook):
     if cmd == "birthdays":
         days, = args
         if not days.isdigit():
-            raise ValueError("Enter a positive integer for the number of days")
+            raise ValueError("Enter non‑negative integer.")
         matches = ab.upcoming(int(days))
         show_birthdays(ab, matches)
         return ""
@@ -522,6 +567,24 @@ def handle_notes(parts, nb: GeneralNoteBook):
 # Main loop
 # ────────────────────────────────────────────────────────────────────────────
 def main():
+    users = load_users()
+    print("Welcome to the assistant bot!")
+
+    while True:
+        choice = input("Do you want to (l)ogin or (r)egister? >>> ").strip()
+        if choice == "r":
+            username = register(users)
+            break
+        elif choice == "l":
+            username = login(users)
+            if username:
+                break
+        else:
+            print("Incalid input. Please enter 'l' for login or 'r' for register.")
+
+    print(f"Hello, {username.capitalize()}, glad to see you again!")
+
+    book = load_data()
     ab, nb, mode = load_data(), load_notes(), "main"
     console.print("\nWellcome to [bold yellow]SYTObook[/] – your personal contacts and notes assistant 🤖\n")
 
