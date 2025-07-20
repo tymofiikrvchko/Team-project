@@ -199,7 +199,6 @@ class AddressBook(UserDict):
     def delete(self, name: str):
         del self.data[make_key_from_input(name)]
 
-    # --- главное: ближайшие ДР ---
     def upcoming(self, days_ahead: int) -> dict[str, Tuple[datetime.date, int]]:
         """
         Вернуть {name: (next_date, age_turning)} для контактов,
